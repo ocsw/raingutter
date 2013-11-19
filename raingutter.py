@@ -340,6 +340,75 @@ def validate_config():
     pass
 
 
+def get_select_query(tables='', key_cv=[], value_cv=[], where_str=None,
+                     more_str=None, more_args=[]):
+    """
+    Create the query string and argument list for a SELECT query.
+    Returns a tuple: (query_str, query_args).
+    Parameters:
+        see generic_db_query()
+    Dependencies:
+        modules: operator, nori
+    """
+    query_args = []
+    query_str = 'SELECT '
+    query_str += ', '.join(map(operator.itemgetter(0),
+                               key_cv + value_cv))
+    query_str += '\n'
+    query_str += 'FROM '
+    if isinstance(tables, nori.core.CONTAINER_TYPES):
+        query_str += ', '.join(tables)
+    else:
+        query_str += tables
+    query_str += '\n'
+    where_parts = []
+    if where_str:
+        where_parts.append('(' + where_str + ')')
+    for t in key_cv:
+        if len(t) > 2:
+            where_parts.append('({0} = %)'.format(t[0]))
+            query_args.append(t[2])
+    if where_parts:
+        query_str += 'WHERE ' + '\nAND\n'.join(where_parts) + '\n'
+    if more_str:
+        query_str += more_str
+        query_args += more_args
+    return (query_str, query_args)
+
+
+def get_update_query(tables='', key_cv=[], value_cv=[], where_str=None):
+    """
+    Create the query string and argument list for an UPDATE query.
+    Returns a tuple: (query_str, query_args).
+    Parameters:
+        see generic_db_query()
+    Dependencies:
+        modules: nori
+    """
+    query_args = []
+    query_str = 'UPDATE '
+    if isinstance(tables, nori.core.CONTAINER_TYPES):
+        query_str += ', '.join(tables)
+    else:
+        query_str += tables
+    query_str += '\n'
+    set_parts = []
+    for t in value_cv:
+        if len(t) > 2:
+            set_parts.append('{0} = %'.format(t[0]))
+            query_args.append(t[1])
+    query_str += 'SET ' + ', '.join(set_parts) + '\n'
+    where_parts = []
+    if where_str:
+        where_parts.append('(' + where_str + ')')
+    for t in key_cv:
+        if len(t) > 2:
+            where_parts.append('({0} = %)'.format(t[0]))
+            query_args.append(t[2])
+    query_str += 'WHERE ' + '\nAND\n'.join(where_parts) + '\n'
+    return (query_str, query_args)
+
+
 def generic_db_query(db_obj=None, mode='read', tables='', key_cv=[],
                      value_cv=[], where_str=None, more_str=None,
                      more_args=[], no_replicate=False):
@@ -379,8 +448,9 @@ def generic_db_query(db_obj=None, mode='read', tables='', key_cv=[],
                       prevent the query from proceeding
 
     Dependencies:
-        functions: generic_db_generator()
-        modules: sys, operator, nori
+        functions: get_select_query(), get_update_query(),
+                   generic_db_generator()
+        modules: sys, nori
 
     """
 
@@ -389,81 +459,37 @@ def generic_db_query(db_obj=None, mode='read', tables='', key_cv=[],
 '''Internal Error: invalid mode supplied in call to generic_db_query();
 call was (in expanded notation):
 
-generic_db_query(mode={0},
-                    tables={1},
-                    key_cv={2},
-                    value_cv={3},
-                    where_str={4},
-                    more_str={5},
-                    more_args={6},
-                    no_replicate={7})
+generic_db_query(db_obj={0},
+                 mode={1},
+                 tables={2},
+                 key_cv={3},
+                 value_cv={4},
+                 where_str={5},
+                 more_str={6},
+                 more_args={7},
+                 no_replicate={8})
 
-Exiting.'''.format(*map(nori.pps, [mode, tables, key_cv, value_cv,
+Exiting.'''.format(*map(nori.pps, [db_obj, mode, tables, key_cv, value_cv,
                                    where_str, more_str, more_args,
                                    no_replicate]))
         )
         sys.exit(nore.core.exitvals['internal']['num'])
-
-    if mode == 'read':
-        query_args = []
-        query_str = 'SELECT '
-        query_str += ', '.join(map(operator.itemgetter(0),
-                                   key_cv + value_cv))
-        query_str += '\n'
-        query_str += 'FROM '
-        if isinstance(tables, nori.core.CONTAINER_TYPES):
-            query_str += ', '.join(tables)
-        else:
-            query_str += tables
-        query_str += '\n'
-        where_parts = []
-        if where_str:
-            where_parts.append('(' + where_str + ')')
-        for t in key_cv:
-            if len(t) > 2:
-                where_parts.append('({0} = %)'.format(t[0]))
-                query_args.append(t[2])
-        if where_parts:
-            query_str += 'WHERE ' + '\nAND\n'.join(where_parts) + '\n'
-        if more_str:
-            query_str += more_str
-            query_args += more_args
-    elif mode == 'update':
-        query_args = []
-        query_str = 'UPDATE '
-        if isinstance(tables, nori.core.CONTAINER_TYPES):
-            query_str += ', '.join(tables)
-        else:
-            query_str += tables
-        query_str += '\n'
-        set_parts = []
-        for t in value_cv:
-            if len(t) > 2:
-                set_parts.append('{0} = %'.format(t[0]))
-                query_args.append(t[1])
-        query_str += 'SET ' + ', '.join(set_parts) + '\n'
-        where_parts = []
-        if where_str:
-            where_parts.append('(' + where_str + ')')
-        for t in key_cv:
-            if len(t) > 2:
-                where_parts.append('({0} = %)'.format(t[0]))
-                query_args.append(t[2])
-        query_str += 'WHERE ' + '\nAND\n'.join(where_parts) + '\n'
 
 ###TODO no_replicate
 #SET sql_log_bin=0;
 #SET sql_log_bin=1;
 # but - check/store temp
 
-    e_ret = db_obj.execute(None, query_str, query_args,
-                           has_results=True if mode == 'read' else False)
-    if mode != 'read':
-        return e_ret
-    if mode == 'read' and not e_ret:
-        return None
+    if mode == 'read':
+        q = get_select_query(tables, key_cv, value_cv, where_str, more_str,
+                             more_args)
+        if not db_obj.execute(None, q[0], q[1], has_results=True):
+            return None
+        return lambda: generic_db_generator((key_cv, value_cv))
 
-    return lambda: generic_db_generator((key_cv, value_cv))
+    if mode == 'update':
+        q = get_update_query(tables, key_cv, value_cv, where_str)
+        return db_obj.execute(None, q[0], q[1], has_results=False)
 
 
 def generic_db_generator(db_obj, key_cv, value_cv):
@@ -486,12 +512,12 @@ def generic_db_generator(db_obj, key_cv, value_cv):
         yield (keys, vals)
 
 
-def generic_drupaldb_query(db_obj=None, mode='read', key_cv=[], value_cv=[],
-                           where_str=None, more_str=None, more_args=[],
-                           no_replicate=False):
+def drupal_db_query(db_obj=None, mode='read', key_cv=[], value_cv=[],
+                    where_str=None, more_str=None, more_args=[],
+                    no_replicate=False):
 
     """
-    Generic Drupal 'DB query function' for use in templates.
+    Drupal 'DB query function' for use in templates.
 
     See the description of the 'templates' config setting.
 
@@ -608,14 +634,160 @@ def generic_drupaldb_query(db_obj=None, mode='read', key_cv=[], value_cv=[],
                       prevent the query from proceeding
 
     Dependencies:
-
+        functions: drupal_db_read(), drupal_db_update()
+        modules: sys, nori
 
     """
-#def generic_drupaldb_query(db_obj=None, mode='read', key_cv=[], value_cv=[],
-#                           where_str=None, more_str=None, more_args=[],
-#                           no_replicate=False):
+
+    if mode != 'read' and mode != 'update':
+        nori.core.email_logger.error(
+'''Internal Error: invalid mode supplied in call to
+drupal_db_query(); call was (in expanded notation):
+
+drupal_db_query(db_obj={0},
+                mode={1},
+                tables={2},
+                key_cv={3},
+                value_cv={4},
+                where_str={5},
+                more_str={6},
+                more_args={7},
+                no_replicate={8})
+
+Exiting.'''.format(*map(nori.pps, [db_obj, mode, tables, key_cv, value_cv,
+                                   where_str, more_str, more_args,
+                                   no_replicate]))
+        )
+        sys.exit(nore.core.exitvals['internal']['num'])
+
+    if mode == 'read':
+        return drupal_db_read(db_obj, key_cv, value_cv, where_str, more_str,
+                              more_args, no_replicate)
+    if mode == 'update':
+        return drupal_db_update(db_obj, key_cv, value_cv, where_str,
+                                more_str, more_args, no_replicate)
 
 
+def drupal_db_read(db_obj=None, key_cv=[], value_cv=[], where_str=None,
+                   more_str=None, more_args=[], no_replicate=False):
+
+    """
+    Do the actual work for generic Drupal DB reads.
+
+    Parameters:
+        see generic_drupal_db_query()
+
+    Dependencies:
+
+    """
+
+    db_tables = ''
+    db_where_list = ['(' + where_str + ')']
+
+    db_key_cv = []
+
+    for key_tuple in key_cv:
+        key_id = key_tuple[0]
+        key_type = key_tuple[1]
+        if len(key_tuple) >= 3:
+            key_value = key_tuple[2]
+            if key_id[0] == 'node':
+                db_tables = 'node'
+                db_where_list.append(
+'''(node.vid IN
+    (SELECT max(node.vid)
+     FROM node
+     GROUP BY nid))'''
+                )
+
+
+            elif key_id[0] == 'fc':
+            elif key_id[0] == 'relation':
+            elif key_id[0] == 'field':
+        else:  # len(key_tuple) < 3
+            if key_id[0] == 'node':
+            elif key_id[0] == 'fc':
+            elif key_id[0] == 'relation':
+            elif key_id[0] == 'field':
+
+              * for nodes: ('node', content_type, ID_type, field_name),
+                where ID_type can be:
+                    * 'id' for the node ID number
+                    * 'title' for the title field
+                    * 'field' for a regular field
+                and field_name is only used if ID_type is 'field', but
+                must always be present
+              * for field collections:
+                ('fc', fc_name, ID_type, field_name) or
+                ('fc', fc_name, ID_type, (field_names)), where:
+                    * fc_name is the name of the field in the node which
+                      contains the field collection itself
+                    * ID_type can be:
+                          * 'id' for the FC item ID number
+                          * 'label' for the label field
+                          * 'field' for a regular field (or fields)
+                    * field_name is the name of the identifying field
+                      to use within the field collection, if ID_type is
+                      'field'
+                    * field_names is a tuple of the names of such
+                      fields
+                    * the fourth element of the tuple must always be
+                      present, even if ID_type is not 'field'
+              * for relations: ('relation', relation_type)
+              * for fields: ('field', field_name)
+              * for ID numbers (in case the ID of a node or field
+                collection is also a 'value' entry): ('id',) [a 1-tuple]
+              * for title fields (in case the title of a node is also a
+                'value' entry): ('title',) [a 1-tuple]
+              * for label fields (in case the label of a field
+                collection is also a 'value' entry): ('label',)
+                [a 1-tuple]
+
+
+
+            tables = 
+            q = get_select_query(tables, key_cv, value_cv, where_str,
+                                 more_str, more_args)
+###TODO
+
+
+def drupal_db_update(db_obj=None, key_cv=[], value_cv=[], where_str=None,
+                     more_str=None, more_args=[], no_replicate=False):
+
+    """
+    Do the actual work for generic Drupal DB updates.
+
+    Parameters:
+        see generic_drupal_db_query()
+
+    Dependencies:
+
+    """
+
+    pass
+
+
+def create_drupal_fc():
+    pass
+
+
+def delete_drupal_fc():
+    pass
+
+
+def get_drupal_rel_by_label():
+    pass
+
+
+def create_drupal_rel():
+    pass
+
+
+def update_drupal_rel():
+    pass
+
+
+def delete_drupal_rel():
     pass
 
 
@@ -658,30 +830,6 @@ def key_filter(key_vals):
 
     # should never be reached
     return False
-
-
-def create_drupal_fc():
-    pass
-
-
-def delete_drupal_fc():
-    pass
-
-
-def get_drupal_rel_by_label():
-    pass
-
-
-def create_drupal_rel():
-    pass
-
-
-def update_drupal_rel():
-    pass
-
-
-def delete_drupal_rel():
-    pass
 
 
 def do_diff_alert():
@@ -756,7 +904,7 @@ def run_mode_hook():
 
 ###TODO: multiples
 
-    
+            
             #diff
             #log
             #change
