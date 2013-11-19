@@ -527,20 +527,23 @@ def drupal_db_query(db_obj=None, mode='read', key_cv=[], value_cv=[],
 
     Specifically, the design goal is to be able to handle the following
     cases:
-        node -> field
-        node -> fc -> field
-        node -> fc -> fc -> field
-        node -> relation -> field
-        node -> fc -> relation -> field
-        node -> fc -> fc -> relation -> field
-        node -> relation -> node
-        node -> fc -> relation -> node
-        node -> fc -> fc -> relation -> node
+        node -> field (including term references)
+        node -> relation -> node(s)
+        node -> relation -> relation_field (including term references)
+        node -> fc -> field (including term references)
 
     These cases aren't supported - _yet_:
+        node -> fc -> fc -> field
+        node -> fc -> relation -> relation_field
+        node -> fc -> fc -> relation -> relation_field
+        node -> fc -> relation -> node
+        node -> fc -> fc -> relation -> node
         node -> relation -> [node -> fc]
         node -> fc -> relation -> [node -> fc]
         node -> fc -> fc -> relation -> [node -> fc]
+        anything with relations of arity != 2
+        multiple target fields
+        etc.
 
     Data identifiers (the equivalent of column names) and their
     associated values are specified as follows:
@@ -681,24 +684,164 @@ def drupal_db_read(db_obj=None, key_cv=[], value_cv=[], where_str=None,
 
     """
 
+    #db_
     db_tables = ''
     db_where_list = ['(' + where_str + ')']
 
     db_key_cv = []
 
-    for key_tuple in key_cv:
+    for i, key_tuple in enumerate(key_cv):
         key_id = key_tuple[0]
         key_type = key_tuple[1]
         if len(key_tuple) >= 3:
             key_value = key_tuple[2]
             if key_id[0] == 'node':
                 db_tables = 'node'
+                db_key_cv.append(('node.nid', 'id'))
+                db_key_cv.append(('node.vid', 'id'))
+                db_key_cv.append(('node.title', 'string', key_value))
+                db_key_cv.append(('node.type', 'string', key_id[1]))
                 db_where_list.append(
 '''(node.vid IN
     (SELECT max(node.vid)
      FROM node
      GROUP BY nid))'''
                 )
+            db_more_str = 'ORDER BY node.title'
+
+
+        node -> field (including term references)
+        NODETYPE, NODETITLE, FIELDNAME
+SELECT node.title, {f.field_FIELDNAME_value or t.name}
+FROM node
+LEFT JOIN field_data_field_FIELDNAME AS f
+          ON f.entity_id = node.nid
+          AND f.revision_id = node.vid
+{LEFT JOIN taxonomy_term_data AS t
+          ON t.tid = f.field_FIELDNAME_tid}
+WHERE (node.vid IN
+       (SELECT max(vid)
+        FROM node
+        GROUP BY nid))
+AND node.type = NODETYPE
+{AND node.title = NODETITLE}
+AND f.deleted = 0
+ORDER BY node.title, f.delta
+
+
+        node -> relation -> node(s)
+        NODE1TYPE, NODE1TITLE, RELTYPE, NODE2TYPE, NODE2TITLE
+SELECT node1.title, node2.title, {node2.type}
+FROM node AS node1
+LEFT JOIN field_data_endpoints AS e1
+          ON e1.endpoints_entity_id = node1.nid
+LEFT JOIN field_data_endpoints AS e2
+          ON e2.entity_id = e1.entity_id
+          AND e2.revision_id = e1.revision_id
+          AND e2.endpoints_r_index > e1.endpoints_r_index
+LEFT JOIN node AS node2
+          ON node2.nid = e2.endpoints_entity_id
+WHERE (node1.vid IN
+       (SELECT max(vid)
+        FROM node
+        GROUP BY nid))
+AND node1.type = NODE1TYPE
+{AND node1.title = NODE1TITLE}
+AND (e1.revision_id IN
+     (SELECT max(revision_id)
+      FROM field_data_endpoints
+      GROUP BY entity_id))
+AND e1.entity_type = 'relation'
+{AND e1.bundle = RELTYPE}
+AND e1.endpoints_entity_type = 'node'
+AND e1.deleted = 0
+AND e2.endpoints_entity_type = 'node'
+AND e2.deleted = 0
+AND (node2.vid IN
+     (SELECT max(vid)
+      FROM node
+      GROUP BY nid))
+{AND node2.type = NODE2TYPE}
+{AND node2.title = NODE2TITLE}
+ORDER BY node1.title, e1.entity_id, node2.title
+
+
+        node -> relation -> rel_field
+        NODE1TYPE, NODE1TITLE, RELTYPE, NODE2TYPE, NODE2TITLE, FIELDNAME
+SELECT node1.title, {f.field_FIELDNAME_value or t.name}, {node2.title}
+FROM node AS node1
+LEFT JOIN field_data_endpoints AS e1
+          ON e1.endpoints_entity_id = node1.nid
+LEFT JOIN field_data_endpoints AS e2
+          ON e2.entity_id = e1.entity_id
+          AND e2.revision_id = e1.revision_id
+          AND e2.endpoints_r_index > e1.endpoints_r_index
+LEFT JOIN node AS node2
+          ON node2.nid = e2.endpoints_entity_id
+LEFT JOIN field_data_field_FIELDNAME AS f
+          ON f.entity_id = e2.entity_id
+          AND f.revision_id = e2.revision_id
+{LEFT JOIN taxonomy_term_data AS t
+          ON t.tid = f.field_FIELDNAME_tid}
+WHERE (node1.vid IN
+       (SELECT max(vid)
+        FROM node
+        GROUP BY nid))
+AND node1.type = NODE1TYPE
+{AND node1.title = NODE1TITLE}
+AND (e1.revision_id IN
+     (SELECT max(revision_id)
+      FROM field_data_endpoints
+      GROUP BY entity_id))
+AND e1.entity_type = 'relation'
+{AND e1.bundle = RELTYPE}
+AND e1.endpoints_entity_type = 'node'
+AND e1.deleted = 0
+AND e2.endpoints_entity_type = 'node'
+AND e2.deleted = 0
+AND (node2.vid IN
+     (SELECT max(vid)
+      FROM node
+      GROUP BY nid))
+{AND node2.type = NODE2TYPE}
+{AND node2.title = NODE2TITLE}
+AND f.entity_type = 'relation'
+AND f.deleted = 0
+ORDER BY node1.title, e1.entity_id, f.delta
+
+
+        node -> fc -> field (including term references)
+        NODETYPE, NODETITLE, FCTYPE, FCLABEL, FIELDNAME
+SELECT node.title, {f.field_FIELDNAME_value or t.name}, {fci.label}
+FROM node
+LEFT JOIN field_data_field_FCTYPE AS fcf
+          ON fcf.entity_id = node.nid
+          AND fcf.revision_id = node.vid
+LEFT JOIN field_collection_item as fci
+          ON fci.item_id = fcf.field_FCTYPE_value
+          AND fci.revision_id = fcf.field_FCTYPE_revision_id
+LEFT JOIN field_data_field_FIELDNAME AS f
+          ON f.entity_id = fci.item_id
+          AND f.revision_id = fci.revision_id
+{LEFT JOIN taxonomy_term_data AS t
+          ON t.tid = f.field_FIELDNAME_tid}
+WHERE (node.vid IN
+       (SELECT max(vid)
+        FROM node
+        GROUP BY nid))
+AND node.type = NODETYPE
+{AND node.title = NODETITLE}
+AND fcf.entity_type = 'node'
+AND fcf.deleted = 0
+AND (fci.revision_id IN
+     (SELECT max(revision_id)
+      FROM field_collection_item
+      GROUP BY item_id))
+AND fci.archived = 0
+{AND fci.label = FCLABEL}
+AND f.entity_type = 'field_collection_item'
+AND f.deleted = 0
+ORDER BY node.title, fcf.delta, f.delta
 
 
             elif key_id[0] == 'fc':
