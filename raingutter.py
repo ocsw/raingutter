@@ -725,13 +725,13 @@ ORDER BY node.title, f.delta
 '''.format(key_column, value_column, field_name, term_join, node_value_cond,
            field_value_cond)
         )
-        query_arg = [node_type]
+        query_args = [node_type]
         if len(node_cv) > 2:
-            query_arg.append(node_value)
+            query_args.append(node_value)
         if len(field_cv) > 2:
-            query_arg.append(field_value)
+            query_args.append(field_value)
 
-        return (query_str, query_arg)
+        return (query_str, query_args)
 
     #
     # node -> relation -> node(s)
@@ -834,16 +834,16 @@ ORDER BY k_node.title, e1.entity_id, v_node.title
 '''.format(key_column, value_column, extra_value_cols, k_node_value_cond,
            v_node_type_cond, v_node_value_cond)
         )
-        query_arg = [k_node_type]
+        query_args = [k_node_type]
         if len(k_node_cv) > 2:
-            query_arg.append(k_node_value)
-        query_arg.append(rel_type)
+            query_args.append(k_node_value)
+        query_args.append(rel_type)
         if v_node_type is not None:
-            query_arg.append(v_node_type)
+            query_args.append(v_node_type)
         if len(v_node_cv) > 2:
-            query_arg.append(v_node_value)
+            query_args.append(v_node_value)
 
-        return (query_str, query_arg)
+        return (query_str, query_args)
 
     #
     # node -> relation & node(s) -> relation_field (incl. term refs)
@@ -969,17 +969,17 @@ ORDER BY k_node.title, e1.entity_id, f.delta
 '''.format(key_column_1, key_column_2, value_column, field_name,
            node1_value_cond, node2_value_cond, field_value_cond)
         )
-        query_arg = [node1_type]
+        query_args = [node1_type]
         if len(node1_cv) > 2:
-            query_arg.append(node1_value)
-        query_arg.append(rel_type)
-        query_arg.append(node2_type)
+            query_args.append(node1_value)
+        query_args.append(rel_type)
+        query_args.append(node2_type)
         if len(node2_cv) > 2:
-            query_arg.append(node2_value)
+            query_args.append(node2_value)
         if len(field_cv) > 2:
-            query_arg.append(field_value)
+            query_args.append(field_value)
 
-        return (query_str, query_arg)
+        return (query_str, query_args)
 
     #
     # node -> fc -> field (including term references)
@@ -1091,15 +1091,15 @@ ORDER BY node.title, fcf.delta, f.delta
            value_column, fc_type, field_name, node_value_cond,
            fc_value_cond, field_value_cond)
         )
-        query_arg = [node_type]
+        query_args = [node_type]
         if len(node_cv) > 2:
-            query_arg.append(node_value)
+            query_args.append(node_value)
         if len(fc_cv) > 2:
-            query_arg.append(fc_value)
+            query_args.append(fc_value)
         if len(field_cv) > 2:
-            query_arg.append(field_value)
+            query_args.append(field_value)
 
-        return (query_str, query_arg)
+        return (query_str, query_args)
 
 #
 # should never be reached
