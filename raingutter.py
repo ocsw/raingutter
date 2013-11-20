@@ -1116,9 +1116,31 @@ def drupal_db_read(db_obj=None, key_cv=[], value_cv=[]):
         see generic_drupal_db_query()
 
     Dependencies:
+        functions: get_drupal_db_read_query(), generic_db_generator()
+        modules: sys, nori
 
     """
 
+    query_str, query_args = get_drupal_db_read_query(key_cv, value_cv)
+
+    if query_str is None and query_args is None:
+        nori.core.email_logger.error(
+'''Internal Error: invalid field list supplied in call to
+drupal_db_read(); call was (in expanded notation):
+
+drupal_db_read(db_obj={0},
+               key_cv={1},
+               value_cv={2})
+
+Exiting.'''.format(*map(nori.pps, [db_obj, key_cv, value_cv]))
+        )
+        sys.exit(nore.core.exitvals['internal']['num'])
+
+    if not db_obj.execute(None, query_str, query_args, has_results=True):
+        return None
+
+    return lambda: generic_db_generator((key_cv, value_cv))
+###TODO: needs more massaging because of optional columns
 
 
 def drupal_db_update(db_obj=None, key_cv=[], value_cv=[],
