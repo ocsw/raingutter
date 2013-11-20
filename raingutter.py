@@ -1350,7 +1350,7 @@ def run_mode_hook():
 
         if s_ret is None:
             # shouldn't actually happen; errors will cause the script to
-            # exit
+            # exit before this, as currently written
             break
 
         for s_row in s_ret:  # s_ret is a generator: (keys, values)
@@ -1389,7 +1389,7 @@ def run_mode_hook():
 
             if d_ret is None:
                 # shouldn't actually happen; errors will cause the
-                # script to exit
+                # script to exit before this, as currently written
                 break
 
 ###TODO: multiples
