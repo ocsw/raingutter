@@ -132,10 +132,12 @@ This must be a sequence of sequences; the inner sequences must have these
 elements:
     * template name [string; recommended to not have spaces]
     * does this template apply to multiple rows per key? [boolean]
+    * source-DB type [string: 'generic' or 'drupal']
     * source-DB query function [function]
     * source-DB query function arguments [tuple: (*args, **kwargs)]
     * to-dest transform function [function]
     * source-DB change callback function [function]
+    * dest-DB type [string: 'generic' or 'drupal']
     * dest-DB query function [function]
     * dest-DB query function arguments [tuple: (*args, **kwargs)]
     * to-source transform function [function]
@@ -145,6 +147,9 @@ In this context, 'keys' are identifiers for use in accessing the correct
 entity in the opposite database, and 'values' are the actual content to
 diff or sync.  Some of the elements are only used if the 'reverse' setting
 is True (but must be present regardless; use None where appropriate).
+
+Functions may be specified as None to use defaults appropriate to the given
+database type.
 
 The DB query functions must take three keyword arguments in addition to any
 other *args and **kwargs:
@@ -239,6 +244,9 @@ Which database entries to compare / sync.
 
 May be 'all', 'include', or 'exclude'.  For 'include' and 'exclude',
 key_list must contain the list of keys to include / exclude.
+
+The check is made after the appropriate transform function is applied (see
+the templates setting, above).
 '''
     ),
     default='all',
