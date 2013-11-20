@@ -1,0 +1,22 @@
+TODO
+
+nori import
+drupal read:
+    add node -> title, fc -> label, etc.
+    inner joins for relations, etc?
+if not in source?  if not in dest?
+validate config - incl. drupal chains
+
+---
+
+db/ssh conn msgs: identifiers
+no_replicate for updates
+    SET sql_log_bin=0;
+    SET sql_log_bin=1;
+    but - check/store 
+more examples/sql, esp for drupal
+
+---
+
+docstring / USAGE
+error handling: exit/skip?
