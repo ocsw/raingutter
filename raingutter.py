@@ -24,6 +24,7 @@ from pprint import pprint as pp  # for debugging
 
 import sys
 import operator
+import copy
 
 
 #########
@@ -1187,6 +1188,58 @@ def key_filter(key_vals):
 
     # should never be reached
     return False
+
+
+def key_copy(source_key_cv, dest_key_cv):
+    """
+    Transfer the 'key' values from the source sequences to the dest.
+    The two sequences must be the same length.
+    Parameters:
+        source_key_cv: the key_cv sequence returned from the source
+                       database
+        dest_key_cv: the key cv sequence from the template for the
+                     destination database
+    """
+    new_dest_key_cv = []
+    for i, s_key in enumerate(source_key_cv):
+        if len(s_key) < 3:
+            new_dest_key_cv.append(dest_key_cv[i])
+        else:
+            new_dest_key_cv.append(dest_key_cv[i][0], dest_key_cv[i][1],
+                                   s_key[2])
+    return new_dest_key_cv
+
+
+def key_value_copy(source_key_cv, source_value_cv, dest_key_cv,
+                   dest_value_cv):
+    """
+    Transfer the 'key' and 'value' values from source to dest seqs.
+    The pairs of sequences must be the same length.
+    Parameters:
+        source_key_cv: the key_cv sequence returned from the source
+                       database
+        source_value_cv: the value_cv sequence returned from the source
+                       database
+        dest_key_cv: the key cv sequence from the template for the
+                     destination database
+        dest_value_cv: the value cv sequence from the template for the
+                     destination database
+    """
+    new_dest_key_cv = []
+    for i, s_key in enumerate(source_key_cv):
+        if len(s_key) < 3:
+            new_dest_key_cv.append(dest_key_cv[i])
+        else:
+            new_dest_key_cv.append(dest_key_cv[i][0], dest_key_cv[i][1],
+                                   s_key[2])
+    new_dest_value_cv = []
+    for i, s_value in enumerate(source_value_cv):
+        if len(s_value) < 3:
+            new_dest_value_cv.append(dest_value_cv[i])
+        else:
+            new_dest_value_cv.append(dest_value_cv[i][0],
+                                     dest_value_cv[i][1], s_value[2])
+    return (new_dest_key_cv, new_dest_value_cv)
 
 
 def do_diff_alert():
