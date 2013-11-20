@@ -337,6 +337,7 @@ Must be a tuple of (*args, **kwargs).
 ########################################################################
 
 def validate_config():
+###TODO including drupal chains
     pass
 
 
@@ -475,11 +476,6 @@ Exiting.'''.format(*map(nori.pps, [db_obj, mode, tables, key_cv, value_cv,
         )
         sys.exit(nore.core.exitvals['internal']['num'])
 
-###TODO no_replicate
-#SET sql_log_bin=0;
-#SET sql_log_bin=1;
-# but - check/store temp
-
     if mode == 'read':
         q = get_select_query(tables, key_cv, value_cv, where_str, more_str,
                              more_args)
@@ -488,6 +484,10 @@ Exiting.'''.format(*map(nori.pps, [db_obj, mode, tables, key_cv, value_cv,
         return lambda: generic_db_generator((key_cv, value_cv))
 
     if mode == 'update':
+###TODO no_replicate
+#SET sql_log_bin=0;
+#SET sql_log_bin=1;
+# but - check/store temp
         q = get_update_query(tables, key_cv, value_cv, where_str)
         return db_obj.execute(None, q[0], q[1], has_results=False)
 
@@ -513,7 +513,6 @@ def generic_db_generator(db_obj, key_cv, value_cv):
 
 
 def drupal_db_query(db_obj=None, mode='read', key_cv=[], value_cv=[],
-                    where_str=None, more_str=None, more_args=[],
                     no_replicate=False):
 
     """
@@ -543,6 +542,7 @@ def drupal_db_query(db_obj=None, mode='read', key_cv=[], value_cv=[],
         node -> fc -> fc -> relation -> [node -> fc]
         anything with relations of arity != 2
         multiple target fields
+        specifying nodes and FCs by field values
         etc.
 
     Data identifiers (the equivalent of column names) and their
@@ -566,54 +566,60 @@ def drupal_db_query(db_obj=None, mode='read', key_cv=[], value_cv=[],
           see the description of the 'templates' config setting, above)
         * the identifiers are themselves tuples conforming to one of
           the following:
-              * for nodes: ('node', content_type, ID_type, field_name),
-                where ID_type can be:
-                    * 'id' for the node ID number
-                    * 'title' for the title field
-                    * 'field' for a regular field
-                and field_name is only used if ID_type is 'field', but
-                must always be present
-              * for field collections:
-                ('fc', fc_name, ID_type, field_name) or
-                ('fc', fc_name, ID_type, (field_names)), where:
-                    * fc_name is the name of the field in the node which
+              * for nodes: ('node', content_type, ID_type)
+                    * content_type is required for 'key' data, but
+                      optional for 'value' data; specify None to omit it
+                      in the latter case
+                    * ID_type:
+                          * can be:
+                                * 'id' for the node ID number
+                                * 'title' for the title field
+                          * refers both to the node's 'value' (if
+                            supplied) and to the way node 'values' are
+                            retrieved from the database
+                          * is required whether or not the node's
+                            'value' is supplied
+              * for field collections: ('fc', fc_type, ID_type)
+                    * fc_type is the name of the field in the node which
                       contains the field collection itself
-                    * ID_type can be:
-                          * 'id' for the FC item ID number
-                          * 'label' for the label field
-                          * 'field' for a regular field (or fields)
-                    * field_name is the name of the identifying field
-                      to use within the field collection, if ID_type is
-                      'field'
-                    * field_names is a tuple of the names of such
-                      fields
-                    * the fourth element of the tuple must always be
-                      present, even if ID_type is not 'field'
+                    * ID_type:
+                          * can be:
+                                * 'id' for the FC item ID number
+                                * 'label' for the label field
+                          * refers both to the FC's 'value' (if
+                            supplied) and to the way FC 'values' are
+                            retrieved from the database
+                          * is required whether or not the FC's 'value'
+                            is supplied
               * for relations: ('relation', relation_type)
+                    * note that supplying a value for a relation is not
+                      supported
+                    * therefore, the data type is optional and ignored
+                    * however, remember that the overall key_cv entry
+                      must be a tuple: (('relation, relation_type), )
               * for fields: ('field', field_name)
-              * for ID numbers (in case the ID of a node or field
-                collection is also a 'value' entry): ('id',) [a 1-tuple]
               * for title fields (in case the title of a node is also a
-                'value' entry): ('title',) [a 1-tuple]
-              * for label fields (in case the label of a field
-                collection is also a 'value' entry): ('label',)
+                'value' entry that must be changed): ('title',)
                 [a 1-tuple]
+              * for label fields (in case the label of a field
+                collection is also a 'value' entry that must be
+                changed): ('label',) [a 1-tuple]
 
     Some examples:
         key_cv = [
             (
-                ('node', 'server', 'title', ''),
-                'host.name.com',
-                'string'),
+                ('node', 'server', 'title'),
+                'string',
+                'host.name.com'
             ),
             (
-                ('fc', 'dimm', 'label', ''),
-                'host.name.com-slot 1',
-                'string'
+                ('fc', 'dimm', 'label'),
+                'string',
+                'host.name.com-slot 1'
             ),
         ]
         value_cv = [
-            (('field', 'size'), 4.000, 'decimal'),
+            (('field', 'size'), 'decimal', 4.000),
         ]
 
     Parameters:
@@ -625,13 +631,6 @@ def drupal_db_query(db_obj=None, mode='read', key_cv=[], value_cv=[],
         value_cv: same as key_cv, but for the 'value' fields (see
                   above); the third elements of the tuples are only used
                   in 'update' mode
-        where_str: if not None, a string to include in the WHERE clause
-                   of the query (don't include the WHERE keyword)
-        more_str: if not None, a string to add to the query; useful for
-                  ORDER and GROUP BY clauses
-        more_args: a list of values to supply along with the database
-                   query for interpolation into the query string; only
-                   needed if there are placeholders in more_str
         no_replicate: if True, attempt to turn off replication during
                       the query; failure will cause a warning, but won't
                       prevent the query from proceeding
@@ -649,146 +648,249 @@ drupal_db_query(); call was (in expanded notation):
 
 drupal_db_query(db_obj={0},
                 mode={1},
-                tables={2},
-                key_cv={3},
-                value_cv={4},
-                where_str={5},
-                more_str={6},
-                more_args={7},
-                no_replicate={8})
+                key_cv={2},
+                value_cv={3},
+                no_replicate={4})
 
-Exiting.'''.format(*map(nori.pps, [db_obj, mode, tables, key_cv, value_cv,
-                                   where_str, more_str, more_args,
+Exiting.'''.format(*map(nori.pps, [db_obj, mode, key_cv, value_cv,
                                    no_replicate]))
         )
         sys.exit(nore.core.exitvals['internal']['num'])
 
     if mode == 'read':
-        return drupal_db_read(db_obj, key_cv, value_cv, where_str, more_str,
-                              more_args, no_replicate)
+        return drupal_db_read(db_obj, key_cv, value_cv)
     if mode == 'update':
-        return drupal_db_update(db_obj, key_cv, value_cv, where_str,
-                                more_str, more_args, no_replicate)
+        return drupal_db_update(db_obj, key_cv, value_cv, no_replicate)
 
 
-def drupal_db_read(db_obj=None, key_cv=[], value_cv=[], where_str=None,
-                   more_str=None, more_args=[], no_replicate=False):
+def get_drupal_db_read_query(key_cv=[], value_cv=[]):
 
     """
-    Do the actual work for generic Drupal DB reads.
+    Get the query string and argument list for a Drupal DB read.
 
     Parameters:
         see generic_drupal_db_query()
 
-    Dependencies:
-
     """
 
-    #db_
-    db_tables = ''
-    db_where_list = ['(' + where_str + ')']
+###TODO: add node -> title, fc -> label, etc.
 
-    db_key_cv = []
+    # node -> field (including term references)
+    if (len(key_cv) == 1 and
+          key_cv[0][0][0] == 'node' and
+          len(value_cv) == 1 and
+          value_cv[0][0][0] == 'field'):
 
-    for i, key_tuple in enumerate(key_cv):
-        key_id = key_tuple[0]
-        key_type = key_tuple[1]
-        if len(key_tuple) >= 3:
-            key_value = key_tuple[2]
-            if key_id[0] == 'node':
-                db_tables = 'node'
-                db_key_cv.append(('node.nid', 'id'))
-                db_key_cv.append(('node.vid', 'id'))
-                db_key_cv.append(('node.title', 'string', key_value))
-                db_key_cv.append(('node.type', 'string', key_id[1]))
-                db_where_list.append(
-'''(node.vid IN
-    (SELECT max(node.vid)
-     FROM node
-     GROUP BY nid))'''
-                )
-            db_more_str = 'ORDER BY node.title'
+        # node details
+        node_cv = key_cv[0]
+        node_ident = node_cv[0]
+        node_value_type = node_cv[1]
+        if len(node_cv) > 2:
+            node_value = node_cv[2]
+        node_type = node_ident[1]
+        node_id_type = node_ident[2]
 
+        # handle node ID types
+        if node_id_type == 'id':
+            key_column = 'node.nid'
+        elif node_id_type == 'title':
+            key_column = 'node.title'
 
-        node -> field (including term references)
-        NODETYPE, NODETITLE, FIELDNAME
-SELECT node.title, {f.field_FIELDNAME_value or t.name}
+        # handle specified node value
+        node_value_cond = ''
+        if len(node_cv) > 2:
+            node_value_cond = 'AND {0} = %'.format(key_column)
+
+        # field details
+        field_cv = value_cv[0]
+        field_ident = field_cv[0]
+        field_value_type = field_cv[1]
+        if len(field_cv) > 2:
+            field_value = field_cv[2]
+        field_name = field_ident[1]
+
+        # handle term references
+        if field_value_type.startswith('term: '):
+            value_column = 't.name'
+            term_join = ('LEFT JOIN taxonomy_term_data AS t\n'
+                         'ON t.tid = f.field_{0}_tid}'.format(field_name))
+        else:
+            value_column = 'f.field_{0}_value'.format(field_name)
+            term_join = ''
+
+        # handle specified field value
+        field_value_cond = ''
+        if len(field_cv) > 2:
+            field_value_cond = 'AND {0} = %'.format(value_column)
+
+        # query string and arguments
+        query_str = (
+'''
+SELECT {0}, {1}
 FROM node
-LEFT JOIN field_data_field_FIELDNAME AS f
+LEFT JOIN field_data_field_{2} AS f
           ON f.entity_id = node.nid
           AND f.revision_id = node.vid
-{LEFT JOIN taxonomy_term_data AS t
-          ON t.tid = f.field_FIELDNAME_tid}
+{3}
 WHERE (node.vid IN
        (SELECT max(vid)
         FROM node
         GROUP BY nid))
-AND node.type = NODETYPE
-{AND node.title = NODETITLE}
+AND node.type = %
+{4}
+{5}
 AND f.deleted = 0
 ORDER BY node.title, f.delta
+'''.format(key_column, value_column, field_name, term_join, node_value_cond,
+           field_value_cond)
+        )
+        query_arg = [node_type]
+        if len(node_cv) > 2:
+            query_arg.append(node_value)
+        if len(field_cv) > 2:
+            query_arg.append(field_value)
 
+        return (query_str, query_arg)
 
-        node -> relation -> node(s)
-        NODE1TYPE, NODE1TITLE, RELTYPE, NODE2TYPE, NODE2TITLE
-SELECT node1.title, node2.title, {node2.type}
-FROM node AS node1
+    # node -> relation -> node(s)
+    if (len(key_cv) == 2 and
+          key_cv[0][0][0] == 'node' and
+          key_cv[1][0][0] == 'relation' and
+          len(value_cv) == 1 and
+          value_cv[0][0][0] == 'node'):
+
+        # key-node details
+        k_node_cv = key_cv[0]
+        k_node_ident = k_node_cv[0]
+        k_node_value_type = k_node_cv[1]
+        if len(k_node_cv) > 2:
+            k_node_value = k_node_cv[2]
+        k_node_type = k_node_ident[1]
+        k_node_id_type = k_node_ident[2]
+
+        # handle key-node ID types
+        if k_node_id_type == 'id':
+            key_column = 'k_node.nid'
+        elif k_node_id_type == 'title':
+            key_column = 'k_node.title'
+
+        # handle specified key-node value
+        k_node_value_cond = ''
+        if len(k_node_cv) > 2:
+            k_node_value_cond = 'AND {0} = %'.format(key_column)
+
+        # relation details
+        rel_cv = key_cv[1]
+        rel_ident = rel_cv[0]
+        rel_type = rel_ident[1]
+
+        # value-node details
+        v_node_cv = value_cv[0]
+        v_node_ident = v_node_cv[0]
+        v_node_value_type = v_node_cv[1]
+        if len(v_node_cv) > 2:
+            v_node_value = v_node_cv[2]
+        v_node_type = v_node_ident[1]
+        v_node_id_type = v_node_ident[2]
+
+        # handle value-node ID types
+        if v_node_id_type == 'id':
+            value_column = 'v_node.nid'
+        elif v_node_id_type == 'title':
+            value_column = 'v_node.title'
+
+        # handle value-node type
+        extra_value_cols = ''
+        v_node_type_cond = ''
+        if v_node_type is None:
+            extra_value_cols = ', v_node.type'
+        else:
+            v_node_type_cond = 'AND v_node.type = %'
+
+        # handle specified value-node value
+        v_node_value_cond = ''
+        if len(v_node_cv) > 2:
+            v_node_value_cond = 'AND {0} = %'.format(value_column)
+
+        # query string and arguments
+        query_str = (
+'''
+SELECT {0}, {1}{2}
+FROM node AS k_node
 LEFT JOIN field_data_endpoints AS e1
-          ON e1.endpoints_entity_id = node1.nid
+          ON e1.endpoints_entity_id = k_node.nid
 LEFT JOIN field_data_endpoints AS e2
           ON e2.entity_id = e1.entity_id
           AND e2.revision_id = e1.revision_id
           AND e2.endpoints_r_index > e1.endpoints_r_index
-LEFT JOIN node AS node2
-          ON node2.nid = e2.endpoints_entity_id
-WHERE (node1.vid IN
+LEFT JOIN node AS v_node
+          ON v_node.nid = e2.endpoints_entity_id
+WHERE (k_node.vid IN
        (SELECT max(vid)
         FROM node
         GROUP BY nid))
-AND node1.type = NODE1TYPE
-{AND node1.title = NODE1TITLE}
+AND k_node.type = %
+{2}
 AND (e1.revision_id IN
      (SELECT max(revision_id)
       FROM field_data_endpoints
       GROUP BY entity_id))
 AND e1.entity_type = 'relation'
-{AND e1.bundle = RELTYPE}
+AND e1.bundle = %
 AND e1.endpoints_entity_type = 'node'
 AND e1.deleted = 0
 AND e2.endpoints_entity_type = 'node'
 AND e2.deleted = 0
-AND (node2.vid IN
+AND (v_node.vid IN
      (SELECT max(vid)
       FROM node
       GROUP BY nid))
-{AND node2.type = NODE2TYPE}
-{AND node2.title = NODE2TITLE}
-ORDER BY node1.title, e1.entity_id, node2.title
+{3}
+{4}
+ORDER BY k_node.title, e1.entity_id, v_node.title
+'''.format(key_column, value_column, extra_value_cols, k_node_value_cond,
+           v_node_type_cond, v_node_value_cond)
+        )
+        query_arg = [k_node_type]
+        if len(k_node_cv) > 2:
+            query_arg.append(k_node_value)
+        query_arg.append(rel_type)
+        if v_node_type is not None:
+            query_arg.append(v_node_type)
+        if len(v_node_cv) > 2:
+            query_arg.append(v_node_value)
 
+        return (query_str, query_arg)
 
-        node -> relation -> rel_field
-        NODE1TYPE, NODE1TITLE, RELTYPE, NODE2TYPE, NODE2TITLE, FIELDNAME
-SELECT node1.title, {f.field_FIELDNAME_value or t.name}, {node2.title}
-FROM node AS node1
+    # node -> relation -> relation_field (including term references)
+    if (len(key_cv) == 2 and
+          key_cv[0][0][0] == 'node' and
+          key_cv[1][0][0] == 'relation' and
+          len(value_cv) == 1 and
+          value_cv[0][0][0] == 'field'):
+# k_nodeTYPE, k_nodeTITLE, RELTYPE, v_nodeTYPE, v_nodeTITLE, FIELDNAME
+'''
+SELECT k_node.title, {f.field_FIELDNAME_value or t.name}, {v_node.title}
+FROM node AS k_node
 LEFT JOIN field_data_endpoints AS e1
-          ON e1.endpoints_entity_id = node1.nid
+          ON e1.endpoints_entity_id = k_node.nid
 LEFT JOIN field_data_endpoints AS e2
           ON e2.entity_id = e1.entity_id
           AND e2.revision_id = e1.revision_id
           AND e2.endpoints_r_index > e1.endpoints_r_index
-LEFT JOIN node AS node2
-          ON node2.nid = e2.endpoints_entity_id
+LEFT JOIN node AS v_node
+          ON v_node.nid = e2.endpoints_entity_id
 LEFT JOIN field_data_field_FIELDNAME AS f
           ON f.entity_id = e2.entity_id
           AND f.revision_id = e2.revision_id
 {LEFT JOIN taxonomy_term_data AS t
           ON t.tid = f.field_FIELDNAME_tid}
-WHERE (node1.vid IN
+WHERE (k_node.vid IN
        (SELECT max(vid)
         FROM node
         GROUP BY nid))
-AND node1.type = NODE1TYPE
-{AND node1.title = NODE1TITLE}
+AND k_node.type = k_nodeTYPE
+{AND k_node.title = k_nodeTITLE}
 AND (e1.revision_id IN
      (SELECT max(revision_id)
       FROM field_data_endpoints
@@ -799,19 +901,26 @@ AND e1.endpoints_entity_type = 'node'
 AND e1.deleted = 0
 AND e2.endpoints_entity_type = 'node'
 AND e2.deleted = 0
-AND (node2.vid IN
+AND (v_node.vid IN
      (SELECT max(vid)
       FROM node
       GROUP BY nid))
-{AND node2.type = NODE2TYPE}
-{AND node2.title = NODE2TITLE}
+{AND v_node.type = v_nodeTYPE}
+{AND v_node.title = v_nodeTITLE}
 AND f.entity_type = 'relation'
 AND f.deleted = 0
-ORDER BY node1.title, e1.entity_id, f.delta
+ORDER BY k_node.title, e1.entity_id, f.delta
+'''
+        return (query_str, query_arg)
 
-
-        node -> fc -> field (including term references)
-        NODETYPE, NODETITLE, FCTYPE, FCLABEL, FIELDNAME
+    # node -> fc -> field (including term references)
+    if (len(key_cv) == 2 and
+          key_cv[0][0][0] == 'node' and
+          key_cv[1][0][0] == 'fc' and
+          len(value_cv) == 1 and
+          value_cv[0][0][0] == 'field'):
+# NODETYPE, NODETITLE, FCTYPE, FCLABEL, FIELDNAME
+'''
 SELECT node.title, {f.field_FIELDNAME_value or t.name}, {fci.label}
 FROM node
 LEFT JOIN field_data_field_FCTYPE AS fcf
@@ -842,60 +951,30 @@ AND fci.archived = 0
 AND f.entity_type = 'field_collection_item'
 AND f.deleted = 0
 ORDER BY node.title, fcf.delta, f.delta
+'''
+        return (query_str, query_arg)
+
+# should never be reached
+return (None, None)
 
 
-            elif key_id[0] == 'fc':
-            elif key_id[0] == 'relation':
-            elif key_id[0] == 'field':
-        else:  # len(key_tuple) < 3
-            if key_id[0] == 'node':
-            elif key_id[0] == 'fc':
-            elif key_id[0] == 'relation':
-            elif key_id[0] == 'field':
+def drupal_db_read(db_obj=None, key_cv=[], value_cv=[]):
 
-              * for nodes: ('node', content_type, ID_type, field_name),
-                where ID_type can be:
-                    * 'id' for the node ID number
-                    * 'title' for the title field
-                    * 'field' for a regular field
-                and field_name is only used if ID_type is 'field', but
-                must always be present
-              * for field collections:
-                ('fc', fc_name, ID_type, field_name) or
-                ('fc', fc_name, ID_type, (field_names)), where:
-                    * fc_name is the name of the field in the node which
-                      contains the field collection itself
-                    * ID_type can be:
-                          * 'id' for the FC item ID number
-                          * 'label' for the label field
-                          * 'field' for a regular field (or fields)
-                    * field_name is the name of the identifying field
-                      to use within the field collection, if ID_type is
-                      'field'
-                    * field_names is a tuple of the names of such
-                      fields
-                    * the fourth element of the tuple must always be
-                      present, even if ID_type is not 'field'
-              * for relations: ('relation', relation_type)
-              * for fields: ('field', field_name)
-              * for ID numbers (in case the ID of a node or field
-                collection is also a 'value' entry): ('id',) [a 1-tuple]
-              * for title fields (in case the title of a node is also a
-                'value' entry): ('title',) [a 1-tuple]
-              * for label fields (in case the label of a field
-                collection is also a 'value' entry): ('label',)
-                [a 1-tuple]
+    """
+    Do the actual work for generic Drupal DB reads.
 
+    Parameters:
+        see generic_drupal_db_query()
 
+    Dependencies:
 
-            tables = 
-            q = get_select_query(tables, key_cv, value_cv, where_str,
-                                 more_str, more_args)
+    """
+
 ###TODO
 
 
-def drupal_db_update(db_obj=None, key_cv=[], value_cv=[], where_str=None,
-                     more_str=None, more_args=[], no_replicate=False):
+def drupal_db_update(db_obj=None, key_cv=[], value_cv=[],
+                     no_replicate=False):
 
     """
     Do the actual work for generic Drupal DB updates.
@@ -915,10 +994,6 @@ def create_drupal_fc():
 
 
 def delete_drupal_fc():
-    pass
-
-
-def get_drupal_rel_by_label():
     pass
 
 
