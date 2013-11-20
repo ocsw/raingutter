@@ -528,13 +528,13 @@ def drupal_db_query(db_obj=None, mode='read', key_cv=[], value_cv=[],
     cases:
         node -> field (including term references)
         node -> relation -> node(s)
-        node -> relation & node -> relation_field (incl. term refs)
+        node -> relation & node(s) -> relation_field (incl. term refs)
         node -> fc -> field (including term references)
 
     These cases aren't supported - _yet_:
         node -> fc -> fc -> field
-        node -> fc -> relation & node -> relation_field
-        node -> fc -> fc -> relation & node -> relation_field
+        node -> fc -> relation & node(s) -> relation_field
+        node -> fc -> fc -> relation & node(s) -> relation_field
         node -> fc -> relation -> node
         node -> fc -> fc -> relation -> node
         node -> relation -> [node -> fc]
@@ -868,7 +868,7 @@ ORDER BY k_node.title, e1.entity_id, v_node.title
         return (query_str, query_arg)
 
     #
-    # node -> relation & node -> relation_field (incl. term references)
+    # node -> relation & node(s) -> relation_field (incl. term refs)
     #
     if (len(key_cv) == 3 and
           key_cv[0][0][0] == 'node' and
