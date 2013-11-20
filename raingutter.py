@@ -528,13 +528,13 @@ def drupal_db_query(db_obj=None, mode='read', key_cv=[], value_cv=[],
     cases:
         node -> field (including term references)
         node -> relation -> node(s)
-        node -> relation -> relation_field (including term references)
+        node -> relation & node -> relation_field (incl. term refs)
         node -> fc -> field (including term references)
 
     These cases aren't supported - _yet_:
         node -> fc -> fc -> field
-        node -> fc -> relation -> relation_field
-        node -> fc -> fc -> relation -> relation_field
+        node -> fc -> relation & node -> relation_field
+        node -> fc -> fc -> relation & node -> relation_field
         node -> fc -> relation -> node
         node -> fc -> fc -> relation -> node
         node -> relation -> [node -> fc]
@@ -674,8 +674,11 @@ def get_drupal_db_read_query(key_cv=[], value_cv=[]):
     """
 
 ###TODO: add node -> title, fc -> label, etc.
+#inner joins for relations, etc?
 
+    #
     # node -> field (including term references)
+    #
     if (len(key_cv) == 1 and
           key_cv[0][0][0] == 'node' and
           len(value_cv) == 1 and
@@ -752,7 +755,9 @@ ORDER BY node.title, f.delta
 
         return (query_str, query_arg)
 
+    #
     # node -> relation -> node(s)
+    #
     if (len(key_cv) == 2 and
           key_cv[0][0][0] == 'node' and
           key_cv[1][0][0] == 'relation' and
@@ -862,84 +867,235 @@ ORDER BY k_node.title, e1.entity_id, v_node.title
 
         return (query_str, query_arg)
 
-    # node -> relation -> relation_field (including term references)
-    if (len(key_cv) == 2 and
+    #
+    # node -> relation & node -> relation_field (incl. term references)
+    #
+    if (len(key_cv) == 3 and
           key_cv[0][0][0] == 'node' and
           key_cv[1][0][0] == 'relation' and
+          key_cv[2][0][0] == 'node' and
           len(value_cv) == 1 and
           value_cv[0][0][0] == 'field'):
-# k_nodeTYPE, k_nodeTITLE, RELTYPE, v_nodeTYPE, v_nodeTITLE, FIELDNAME
+
+        # node1 details
+        node1_cv = key_cv[0]
+        node1_ident = node1_cv[0]
+        node1_value_type = node1_cv[1]
+        if len(node1_cv) > 2:
+            node1_value = node1_cv[2]
+        node1_type = node1_ident[1]
+        node1_id_type = node1_ident[2]
+
+        # handle node1 ID types
+        if node1_id_type == 'id':
+            key_column_1 = 'node1.nid'
+        elif node1_id_type == 'title':
+            key_column_1 = 'node1.title'
+
+        # handle specified node1 value
+        node1_value_cond = ''
+        if len(node1_cv) > 2:
+            node1_value_cond = 'AND {0} = %'.format(key_column_1)
+
+        # relation details
+        rel_cv = key_cv[1]
+        rel_ident = rel_cv[0]
+        rel_type = rel_ident[1]
+
+        # node2 details
+        node2_cv = key_cv[0]
+        node2_ident = node2_cv[0]
+        node2_value_type = node2_cv[1]
+        if len(node2_cv) > 2:
+            node2_value = node2_cv[2]
+        node2_type = node2_ident[1]
+        node2_id_type = node2_ident[2]
+
+        # handle node2 ID types
+        if node2_id_type == 'id':
+            key_column_2 = 'node2.nid'
+        elif node2_id_type == 'title':
+            key_column_2 = 'node2.title'
+
+        # handle specified node2 value
+        node2_value_cond = ''
+        if len(node2_cv) > 2:
+            node2_value_cond = 'AND {0} = %'.format(key_column_2)
+
+        # field details
+        field_cv = value_cv[0]
+        field_ident = field_cv[0]
+        field_value_type = field_cv[1]
+        if len(field_cv) > 2:
+            field_value = field_cv[2]
+        field_name = field_ident[1]
+
+        # handle term references
+        if field_value_type.startswith('term: '):
+            value_column = 't.name'
+            term_join = ('LEFT JOIN taxonomy_term_data AS t\n'
+                         'ON t.tid = f.field_{0}_tid}'.format(field_name))
+        else:
+            value_column = 'f.field_{0}_value'.format(field_name)
+            term_join = ''
+
+        # handle specified field value
+        field_value_cond = ''
+        if len(field_cv) > 2:
+            field_value_cond = 'AND {0} = %'.format(value_column)
+
+        # query string and arguments
+        query_str = (
 '''
-SELECT k_node.title, {f.field_FIELDNAME_value or t.name}, {v_node.title}
-FROM node AS k_node
+SELECT {0}, {1}, {2}
+FROM node AS node1
 LEFT JOIN field_data_endpoints AS e1
-          ON e1.endpoints_entity_id = k_node.nid
+          ON e1.endpoints_entity_id = node1.nid
 LEFT JOIN field_data_endpoints AS e2
           ON e2.entity_id = e1.entity_id
           AND e2.revision_id = e1.revision_id
           AND e2.endpoints_r_index > e1.endpoints_r_index
-LEFT JOIN node AS v_node
-          ON v_node.nid = e2.endpoints_entity_id
-LEFT JOIN field_data_field_FIELDNAME AS f
+LEFT JOIN node AS node2
+          ON node2.nid = e2.endpoints_entity_id
+LEFT JOIN field_data_field_{3} AS f
           ON f.entity_id = e2.entity_id
           AND f.revision_id = e2.revision_id
 {LEFT JOIN taxonomy_term_data AS t
-          ON t.tid = f.field_FIELDNAME_tid}
-WHERE (k_node.vid IN
+          ON t.tid = f.field_{3}_tid}
+WHERE (node1.vid IN
        (SELECT max(vid)
         FROM node
         GROUP BY nid))
-AND k_node.type = k_nodeTYPE
-{AND k_node.title = k_nodeTITLE}
+AND node1.type = %
+{4}
 AND (e1.revision_id IN
      (SELECT max(revision_id)
       FROM field_data_endpoints
       GROUP BY entity_id))
 AND e1.entity_type = 'relation'
-{AND e1.bundle = RELTYPE}
+AND e1.bundle = %
 AND e1.endpoints_entity_type = 'node'
 AND e1.deleted = 0
 AND e2.endpoints_entity_type = 'node'
 AND e2.deleted = 0
-AND (v_node.vid IN
+AND (node2.vid IN
      (SELECT max(vid)
       FROM node
       GROUP BY nid))
-{AND v_node.type = v_nodeTYPE}
-{AND v_node.title = v_nodeTITLE}
+AND node2.type = %
+{5}
 AND f.entity_type = 'relation'
 AND f.deleted = 0
+{6}
 ORDER BY k_node.title, e1.entity_id, f.delta
-'''
+'''.format(key_column_1, key_column_2, value_column, field_name,
+           node1_value_cond, node2_value_cond, field_value_cond)
+        )
+        query_arg = [node1_type]
+        if len(node1_cv) > 2:
+            query_arg.append(node1_value)
+        query_arg.append(rel_type)
+        query_arg.append(node2_type)
+        if len(node2_cv) > 2:
+            query_arg.append(node2_value)
+        if len(field_cv) > 2:
+            query_arg.append(field_value)
+
         return (query_str, query_arg)
 
+    #
     # node -> fc -> field (including term references)
+    #
     if (len(key_cv) == 2 and
           key_cv[0][0][0] == 'node' and
           key_cv[1][0][0] == 'fc' and
           len(value_cv) == 1 and
           value_cv[0][0][0] == 'field'):
-# NODETYPE, NODETITLE, FCTYPE, FCLABEL, FIELDNAME
+
+        # node details
+        node_cv = key_cv[0]
+        node_ident = node_cv[0]
+        node_value_type = node_cv[1]
+        if len(node_cv) > 2:
+            node_value = node_cv[2]
+        node_type = node_ident[1]
+        node_id_type = node_ident[2]
+
+        # handle node ID types
+        if node_id_type == 'id':
+            key_column = 'node.nid'
+        elif node_id_type == 'title':
+            key_column = 'node.title'
+
+        # handle specified node value
+        node_value_cond = ''
+        if len(node_cv) > 2:
+            node_value_cond = 'AND {0} = %'.format(key_column)
+
+        # fc details
+        fc_cv = key_cv[1]
+        fc_ident = fc_cv[0]
+        fc_value_type = fc_cv[1]
+        if len(fc_cv) > 2:
+            fc_value = fc_cv[2]
+        fc_type = fc_ident[1]
+        fc_id_type = fc_ident[2]
+
+        # handle fc ID types
+        if fc_id_type == 'id':
+            extra_key_column = 'fci.item_id'
+        elif fc_id_type == 'label':
+            extra_key_column = 'fci.label'
+
+        # handle specified fc value
+        fc_value_cond = ''
+        if len(fc_cv) > 2:
+            fc_value_cond = 'AND {0} = %'.format(extra_key_column)
+
+        # field details
+        field_cv = value_cv[0]
+        field_ident = field_cv[0]
+        field_value_type = field_cv[1]
+        if len(field_cv) > 2:
+            field_value = field_cv[2]
+        field_name = field_ident[1]
+
+        # handle term references
+        if field_value_type.startswith('term: '):
+            value_column = 't.name'
+            term_join = ('LEFT JOIN taxonomy_term_data AS t\n'
+                         'ON t.tid = f.field_{0}_tid}'.format(field_name))
+        else:
+            value_column = 'f.field_{0}_value'.format(field_name)
+            term_join = ''
+
+        # handle specified field value
+        field_value_cond = ''
+        if len(field_cv) > 2:
+            field_value_cond = 'AND {0} = %'.format(value_column)
+
+        # query string and arguments
+        query_str = (
 '''
-SELECT node.title, {f.field_FIELDNAME_value or t.name}, {fci.label}
+SELECT {0}, {1}{2}
 FROM node
-LEFT JOIN field_data_field_FCTYPE AS fcf
+LEFT JOIN field_data_field_{3} AS fcf
           ON fcf.entity_id = node.nid
           AND fcf.revision_id = node.vid
 LEFT JOIN field_collection_item as fci
-          ON fci.item_id = fcf.field_FCTYPE_value
-          AND fci.revision_id = fcf.field_FCTYPE_revision_id
-LEFT JOIN field_data_field_FIELDNAME AS f
+          ON fci.item_id = fcf.field_{3}_value
+          AND fci.revision_id = fcf.field_{3}_revision_id
+LEFT JOIN field_data_field_{4} AS f
           ON f.entity_id = fci.item_id
           AND f.revision_id = fci.revision_id
 {LEFT JOIN taxonomy_term_data AS t
-          ON t.tid = f.field_FIELDNAME_tid}
+          ON t.tid = f.field_{4}_tid}
 WHERE (node.vid IN
        (SELECT max(vid)
         FROM node
         GROUP BY nid))
-AND node.type = NODETYPE
-{AND node.title = NODETITLE}
+AND node.type = %
+{5}
 AND fcf.entity_type = 'node'
 AND fcf.deleted = 0
 AND (fci.revision_id IN
@@ -947,14 +1103,29 @@ AND (fci.revision_id IN
       FROM field_collection_item
       GROUP BY item_id))
 AND fci.archived = 0
-{AND fci.label = FCLABEL}
+{6}
 AND f.entity_type = 'field_collection_item'
 AND f.deleted = 0
+{7}
 ORDER BY node.title, fcf.delta, f.delta
-'''
+'''.format(key_column,
+           (extra_key_column + ', ') if extra_key_column else '',
+           value_column, fc_type, field_name, node_value_cond,
+           fc_value_cond, field_value_cond)
+        )
+        query_arg = [node_type]
+        if len(node_cv) > 2:
+            query_arg.append(node_value)
+        if len(fc_cv) > 2:
+            query_arg.append(fc_value)
+        if len(field_cv) > 2:
+            query_arg.append(field_value)
+
         return (query_str, query_arg)
 
+#
 # should never be reached
+#
 return (None, None)
 
 
