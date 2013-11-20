@@ -2,32 +2,10 @@
 
 
 """
-DOCSTRING CONTENTS:
--------------------
-
-    1) About and Requirements
-    2) General Information
-
-
-1) ABOUT AND REQUIREMENTS:
---------------------------
-
-    This is the raingutter database diff and sync tool.  It can handle
-    general MySQL databases, but is particularly designed to handle
-    getting data into and out of Drupal 7 databases.
-
-
-2) GENERAL INFORMATION:
------------------------
-
-
-
+This is the raingutter database diff and sync tool.  It can handle
+general MySQL databases, but is particularly designed to handle
+getting data into and out of Drupal 7 databases.
 """
-
-###TODO
-#docstring
-#error handling: exit/skip?
-#db/ssh conn msgs: identifiers
 
 
 ########################################################################
@@ -54,7 +32,6 @@ import operator
 
 sys.path.insert(0, '/home/dmalament')
 import nori
-###TODO
 
 
 ########################################################################
@@ -337,7 +314,6 @@ Must be a tuple of (*args, **kwargs).
 ########################################################################
 
 def validate_config():
-###TODO including drupal chains
     pass
 
 
@@ -484,10 +460,6 @@ Exiting.'''.format(*map(nori.pps, [db_obj, mode, tables, key_cv, value_cv,
         return lambda: generic_db_generator((key_cv, value_cv))
 
     if mode == 'update':
-###TODO no_replicate
-#SET sql_log_bin=0;
-#SET sql_log_bin=1;
-# but - check/store temp
         q = get_update_query(tables, key_cv, value_cv, where_str)
         return db_obj.execute(None, q[0], q[1], has_results=False)
 
@@ -672,9 +644,6 @@ def get_drupal_db_read_query(key_cv=[], value_cv=[]):
         see generic_drupal_db_query()
 
     """
-
-###TODO: add node -> title, fc -> label, etc.
-#inner joins for relations, etc?
 
     #
     # node -> field (including term references)
@@ -1141,7 +1110,6 @@ def drupal_db_read(db_obj=None, key_cv=[], value_cv=[]):
 
     """
 
-###TODO
 
 
 def drupal_db_update(db_obj=None, key_cv=[], value_cv=[],
@@ -1273,7 +1241,6 @@ def run_mode_hook():
 
         if not s_ret:
             break
-###TODO
 
         for s_row in s_ret:  # s_ret is a generator: (keys, values)
             if not key_filter(s_row[0]):
@@ -1289,14 +1256,16 @@ def run_mode_hook():
 
             if not d_ret:
                 break
-###TODO
 
 ###TODO: multiples
 
             
+
             #diff
             #log
-            #change
+            #change, incl. callbacks
+
+    #overall change callbacks
 
     destdb.close()
     sourcedb.close()
