@@ -1411,6 +1411,7 @@ def run_mode_hook():
 ########################################################################
 
 def main():
+    nori.core.validate_config_hooks.append(validate_config)
     nori.core.run_mode_hooks.append(run_mode_hook)
     nori.process_command_line()
 
