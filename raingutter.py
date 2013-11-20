@@ -1293,10 +1293,12 @@ def run_mode_hook():
     """
     Do the actual work.
     Dependencies:
-        config settings: templates, source
+        config settings: templates, reverse
         globals: sourcedb, destdb
-        functions: key_filter()
-        modules: nori
+        functions: generic_db_query(), drupal_db_query(), key_filter(),
+                   key_copy(), (functions in templates)
+        modules: copy, nori
+        Python: 2.0/3.2, for callable()
     """
 
     sourcedb.connect()
@@ -1305,39 +1307,89 @@ def run_mode_hook():
     for template in nori.core.cfg['templates']:
         t_name = template[0]
         t_multiple = template[1]
-        t_source_func = template[2]
-        t_source_args = template[3]
-        t_to_dest_func = template[4]
-        t_source_change_func = template[5]
-        t_dest_func = template[6]
-        t_dest_args = template[7]
-        t_to_source_func = template[8]
-        t_dest_change_func = template[9]
+        t_source_type = template[2]
+        t_source_func = template[3]
+        t_source_args = template[4][0]
+        t_source_kwargs = template[4][1]
+        t_to_dest_func = template[5]
+        t_source_change_func = template[6]
+        t_dest_type = template[7]
+        t_dest_func = template[8]
+        t_dest_args = template[9][0]
+        t_dest_kwargs = template[9][1]
+        t_to_source_func = template[10]
+        t_dest_change_func = template[11]
+
+        # filter by template
+        if (nori.cfg['template_mode'] == 'include' and
+              t_name not in nori.cfg['template_list']):
+            continue
+        elif (nori.cfg['template_mode'] == 'exclude' and
+                t_name in nori.cfg['template_list']):
+            continue
+
+        # handle unspecified functions
+        if t_source_func is None:
+            if t_source_type == 'generic':
+                t_source_func = generic_db_query
+            elif t_source_type == 'drupal':
+                t_source_func = drupal_db_query
+        if t_dest_func is None:
+            if t_dest_type == 'generic':
+                t_dest_func = generic_db_query
+            elif t_dest_type == 'drupal':
+                t_dest_func = drupal_db_query
 
         # get the source data
         if not nori.core.cfg['reverse']:
-            s_ret = t_source_func(*t_source_args[0], db_obj=sourcedb,
-                                  mode='read', **t_source_args[1])
+            s_ret = t_source_func(*t_source_args, db_obj=sourcedb,
+                                  mode='read', **t_source_kwargs)
         else:
-            s_ret = t_dest_func(*t_dest_args[0], db_obj=destdb,
-                                mode='read', **t_dest_args[1])
+            s_ret = t_dest_func(*t_dest_args, db_obj=destdb,
+                                mode='read', **t_dest_kwargs)
 
-        if not s_ret:
+        if s_ret is None:
+            # shouldn't actually happen; errors will cause the script to
+            # exit
             break
 
         for s_row in s_ret:  # s_ret is a generator: (keys, values)
-            if not key_filter(s_row[0]):
+            s_keys = s_row[0]
+            s_values = s_row[1]
+
+            # apply transform
+            if not nori.core.cfg['reverse']:
+                if t_to_dest_function and callable(t_to_dest_function):
+                    s_keys, s_values = t_to_dest_function(
+                        template, s_keys, s_values
+                    )
+            else:
+                if t_to_source_function and callable(t_to_source_function):
+                    s_keys, s_values = t_to_source_function(
+                        template, s_keys, s_values
+                    )
+
+            # filter by keys
+            if not key_filter(s_keys):
                 continue
 
             # get the destination data
             if not nori.core.cfg['reverse']:
-                d_ret = t_dest_func(*t_dest_args[0], db_obj=destdb,
-                                      mode='read', **t_dest_args[1])
+                new_key_cv = key_copy(s_keys, t_dest_kwargs['key_cv'])
+                new_t_dest_kwargs = copy.copy(t_dest_kwargs)
+                new_t_dest_kwargs['key_cv'] = new_key_cv
+                d_ret = t_dest_func(*t_dest_args, db_obj=destdb,
+                                    mode='read', **t_dest_kwargs)
             else:
-                d_ret = t_source_func(*t_source_args[0], db_obj=sourcedb,
-                                      mode='read', **t_source_args[1])
+                new_key_cv = key_copy(s_keys, t_source_kwargs['key_cv'])
+                new_t_source_kwargs = copy.copy(t_source_kwargs)
+                new_t_source_kwargs['key_cv'] = new_key_cv
+                d_ret = t_source_func(*t_source_args, db_obj=sourcedb,
+                                      mode='read', **t_source_kwargs)
 
-            if not d_ret:
+            if d_ret is None:
+                # shouldn't actually happen; errors will cause the
+                # script to exit
                 break
 
 ###TODO: multiples
