@@ -1,5 +1,13 @@
 TODO
 
+	main loop
+	updates
+	validate configs
+	configs for OCS fields
+	testing
+
+key list - to templates, or both
+
 nori import
 drupal read:
     add node -> title, fc -> label, etc.
