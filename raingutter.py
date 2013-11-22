@@ -24,7 +24,6 @@ from pprint import pprint as pp  # for debugging
 
 import sys
 import operator
-import copy
 
 
 #########
@@ -73,6 +72,16 @@ LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
 NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
 EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 '''
+
+# store the diffs in one of two ways:
+# * a list of diff tuples in the format:
+#   (template_index, exists_in_source, source_row, exists_in_dest,
+#    dest_row, has_been_changed)
+# * an ordered dict with keys which are rendered database key strings
+#   and values which are lists of tuples as above
+# see the report_order config setting
+diff_list = []
+diff_dict = collections.OrderedDict()
 
 
 ############
@@ -130,7 +139,7 @@ The templates for comparing / syncing the databases.
 
 This must be a sequence of sequences; the inner sequences must have these
 elements:
-    * template name [string; recommended to not have spaces]
+    * template name [string]
     * does this template apply to multiple rows per key? [boolean]
     * source-DB type [string: 'generic' or 'drupal']
     * source-DB query function [function]
@@ -142,14 +151,21 @@ elements:
     * dest-DB query function arguments [tuple: (*args, **kwargs)]
     * to-source transform function [function]
     * dest-DB change callback function [function]
+    * key mode [string]
+    * key list [list]
 
 In this context, 'keys' are identifiers for use in accessing the correct
 entity in the opposite database, and 'values' are the actual content to
-diff or sync.  Some of the elements are only used if the 'reverse' setting
-is True (but must be present regardless; use None where appropriate).
+diff or sync.  Only one of the change callback functions is used (which one
+depends on the 'reverse' setting), but both must be present regardless; use
+None where appropriate.
 
 Functions may be specified as None to use defaults appropriate to the given
 database type.
+
+The template name must be unique across all templates.  It is recommended
+not to include spaces in the names, for easier specification on the command
+line.
 
 The DB query functions must take three keyword arguments in addition to any
 other *args and **kwargs:
@@ -167,22 +183,6 @@ databases, and the values may also require transformation (see below).
 What matters is that the sets of key and value columns for each database
 correspond to each other and are the same length.
 
-In 'read' mode, the query functions must return None on failure, or a
-generator function on success.  The generator function must return a tuple
-of (key_cv, value_cv), where key_cv and value_cv are the same as the input
-arguments, but with all of the values filled in.  If the multi-row boolean
-is true, rows for the same keys must be retrieved in sequence (i.e., two
-rows for the same keys may not be separated by a row for different keys;
-this typically requires an ORDER BY clause in SQL).
-
-In 'update' mode, the query functions must return True or False to indicate
-success or failure.
-
-The transform functions must take the following parameters:
-    template: the complete template entry for this data
-    key_cv: returned from the query function (see above)
-    value_cv: returned from the query function (see above)
-
 As described above, key_cv and value_cv contain strings referring to data
 types; particular data types that can/should be supported include:
     'string'
@@ -195,20 +195,61 @@ Some of these are Drupal-specific; in particular, the 'term' type is for
 Drupal taxonomy term references, and includes the name of the relevant
 vocabulary.
 
-The transform functions must return a tuple of (key_cv, value_cv) suitable
-for passing to the opposite query function.  In many cases, this will
-require no actual transformation, as the database connector will handle
-data-type conversion on both ends.  To do nothing, use:
+In 'read' mode, the query functions must return None on failure, or a
+complete result set on success.  The result set must be a sequence (possibly
+empty) of row tuples, each of which contains both the 'key' and 'value'
+results.  If the multi-row boolean is true, rows for the same keys must be
+retrieved in sequence (i.e., two rows for the same keys may not be separated
+by a row for different keys; this typically requires an ORDER BY clause in
+SQL).
+
+In 'update' mode, the query functions must return True or False to indicate
+success or failure.
+
+The transform functions must take the following parameters:
+    template: the complete template entry for this data
+    row: a single row from the results returned by the query function (see
+         above)
+and must return a row in the same format as the input, containing values
+suitable for comparison with or insertion into the opposite database.  In
+many cases, this will require no actual transformation, as the database
+connector will handle data-type conversion on both ends.  To do nothing,
+use:
     lambda x, y, z: (y, z)
+
+Both transform functions will be called before comparing data, so be sure
+that they both output the data in the same format.  This format must also
+match the keys specified in the per-template and global key lists.
 
 The change callback functions must be either None, or else functions to call
 if this template has caused any changes in the database.  This is
 particularly important for emulating computed fields in a Drupal database.
 Change callbacks must accept the following:
     template: the complete template entry for this data
-    key_cv: returned from the query function (see above)
-    value_cv: returned from the query function (see above)
+    row: a single row from the results returned by the query function (see
+         above)
 and return True (success) or False (failure).
+
+The key mode specifies which database entries to compare / sync; it may be
+'all', 'include', or 'exclude'.  For 'include' and 'exclude', the key list
+must contain the list of keys to include / exclude; for 'all', the key list
+must exist, but is ignored (you can use None).
+
+The checks are made after the appropriate transform functions are applied
+(see above).
+
+If there is a conflict between this setting and the global key mode setting
+in which one excludes an entry and the other includes it, the entry is
+excluded.
+
+Key list entries may be tuples if there are multiple key columns in the
+database queries.
+
+The entries in the key list will be compared with the key columns of each
+data row beginning at the first column.  It is an error for a row to have
+fewer key columns than are in the key list, but if a row has more key
+columns, columns which have no corresponding entry in the key list will be
+ignored for purposes of the comparison.
 '''
     ),
     default=[],
@@ -245,8 +286,20 @@ Which database entries to compare / sync.
 May be 'all', 'include', or 'exclude'.  For 'include' and 'exclude',
 key_list must contain the list of keys to include / exclude.
 
-The check is made after the appropriate transform function is applied (see
-the templates setting, above).
+The checks are made after the appropriate transform functions are applied
+(see the templates setting, above).
+
+This is separate from the per-template setting (see above), and is only
+useful if all templates share a common prefix of key columns.  (That is, the
+entries in the key list (below) will be compared with the key columns of
+each data row beginning at the first column.  It is an error for a row to
+have fewer key columns than are in the key list, but if a row has more key
+columns, columns which have no corresponding entry in the key list will be
+ignored for purposes of the comparison.)
+
+If there is a conflict between this setting and the per-template key mode
+setting in which one excludes an entry and the other includes it, the entry
+is excluded.
 '''
     ),
     default='all',
@@ -317,6 +370,21 @@ Must be a tuple of (*args, **kwargs).
     default=([], {}),
 )
 
+nori.core.config_settings['reporting_heading'] = dict(
+    heading='Reporting',
+)
+
+nori.core.config_settings['report_order'] = dict(
+    descr=(
+'''
+Report diff / sync results grouped by template entry ('template') or
+database keys ('keys')?
+'''
+    ),
+    default='template',
+    cl_coercer=str,
+)
+
 
 ########################################################################
 #                              FUNCTIONS
@@ -324,75 +392,6 @@ Must be a tuple of (*args, **kwargs).
 
 def validate_config():
     pass
-
-
-def get_select_query(tables='', key_cv=[], value_cv=[], where_str=None,
-                     more_str=None, more_args=[]):
-    """
-    Create the query string and argument list for a SELECT query.
-    Returns a tuple: (query_str, query_args).
-    Parameters:
-        see generic_db_query()
-    Dependencies:
-        modules: operator, nori
-    """
-    query_args = []
-    query_str = 'SELECT '
-    query_str += ', '.join(map(operator.itemgetter(0),
-                               key_cv + value_cv))
-    query_str += '\n'
-    query_str += 'FROM '
-    if isinstance(tables, nori.core.CONTAINER_TYPES):
-        query_str += ', '.join(tables)
-    else:
-        query_str += tables
-    query_str += '\n'
-    where_parts = []
-    if where_str:
-        where_parts.append('(' + where_str + ')')
-    for t in key_cv:
-        if len(t) > 2:
-            where_parts.append('({0} = %)'.format(t[0]))
-            query_args.append(t[2])
-    if where_parts:
-        query_str += 'WHERE ' + '\nAND\n'.join(where_parts) + '\n'
-    if more_str:
-        query_str += more_str
-        query_args += more_args
-    return (query_str, query_args)
-
-
-def get_update_query(tables='', key_cv=[], value_cv=[], where_str=None):
-    """
-    Create the query string and argument list for an UPDATE query.
-    Returns a tuple: (query_str, query_args).
-    Parameters:
-        see generic_db_query()
-    Dependencies:
-        modules: nori
-    """
-    query_args = []
-    query_str = 'UPDATE '
-    if isinstance(tables, nori.core.CONTAINER_TYPES):
-        query_str += ', '.join(tables)
-    else:
-        query_str += tables
-    query_str += '\n'
-    set_parts = []
-    for t in value_cv:
-        if len(t) > 2:
-            set_parts.append('{0} = %'.format(t[0]))
-            query_args.append(t[1])
-    query_str += 'SET ' + ', '.join(set_parts) + '\n'
-    where_parts = []
-    if where_str:
-        where_parts.append('(' + where_str + ')')
-    for t in key_cv:
-        if len(t) > 2:
-            where_parts.append('({0} = %)'.format(t[0]))
-            query_args.append(t[2])
-    query_str += 'WHERE ' + '\nAND\n'.join(where_parts) + '\n'
-    return (query_str, query_args)
 
 
 def generic_db_query(db_obj=None, mode='read', tables='', key_cv=[],
@@ -462,35 +461,92 @@ Exiting.'''.format(*map(nori.pps, [db_obj, mode, tables, key_cv, value_cv,
         sys.exit(nore.core.exitvals['internal']['num'])
 
     if mode == 'read':
-        q = get_select_query(tables, key_cv, value_cv, where_str, more_str,
-                             more_args)
-        if not db_obj.execute(None, q[0], q[1], has_results=True):
+        query_str, query_args = get_select_query(
+            tables, key_cv, value_cv, where_str, more_str, more_args
+        )
+        if not db_obj.execute(None, query_str, query_args,
+                              has_results=True):
             return None
-        return lambda: generic_db_generator((key_cv, value_cv))
+        ret = db_obj.fetchall(None)
+        if not ret[0]:
+            return None
+        if not ret[1]:
+            return []
+        return ret[1]
 
     if mode == 'update':
         q = get_update_query(tables, key_cv, value_cv, where_str)
-        return db_obj.execute(None, q[0], q[1], has_results=False)
+        return db_obj.execute(None, query_str, query_args,
+                              has_results=False)
 
 
-def generic_db_generator(db_obj, key_cv, value_cv):
+def get_select_query(tables='', key_cv=[], value_cv=[], where_str=None,
+                     more_str=None, more_args=[]):
     """
-    Massage the query results: stuff them into the cv sequences.
+    Create the query string and argument list for a SELECT query.
+    Returns a tuple: (query_str, query_args).
     Parameters:
         see generic_db_query()
+    Dependencies:
+        modules: operator, nori
     """
-    num_keys = len(key_cv)
-    for row in db_obj.fetchone_generator(None):
-        keys = key_cv[:]  # make a copy
-        vals = value_cv[:]  # make a copy
-        if row is None:
-            break
-        for i, row_val in enumerate(row):
-            if i < num_keys:
-                keys[i][2] = row_val
-            else:
-                vals[i][2] = row_val
-        yield (keys, vals)
+    query_args = []
+    query_str = 'SELECT '
+    query_str += ', '.join(map(operator.itemgetter(0),
+                               key_cv + value_cv))
+    query_str += '\n'
+    query_str += 'FROM '
+    if isinstance(tables, nori.core.CONTAINER_TYPES):
+        query_str += ', '.join(tables)
+    else:
+        query_str += tables
+    query_str += '\n'
+    where_parts = []
+    if where_str:
+        where_parts.append('(' + where_str + ')')
+    for t in key_cv:
+        if len(t) > 2:
+            where_parts.append('({0} = %)'.format(t[0]))
+            query_args.append(t[2])
+    if where_parts:
+        query_str += 'WHERE ' + '\nAND\n'.join(where_parts) + '\n'
+    if more_str:
+        query_str += more_str
+        query_args += more_args
+    return (query_str, query_args)
+
+
+def get_update_query(tables='', key_cv=[], value_cv=[], where_str=None):
+    """
+    Create the query string and argument list for an UPDATE query.
+    Returns a tuple: (query_str, query_args).
+    Parameters:
+        see generic_db_query()
+    Dependencies:
+        modules: nori
+    """
+    query_args = []
+    query_str = 'UPDATE '
+    if isinstance(tables, nori.core.CONTAINER_TYPES):
+        query_str += ', '.join(tables)
+    else:
+        query_str += tables
+    query_str += '\n'
+    set_parts = []
+    for t in value_cv:
+        if len(t) > 2:
+            set_parts.append('{0} = %'.format(t[0]))
+            query_args.append(t[1])
+    query_str += 'SET ' + ', '.join(set_parts) + '\n'
+    where_parts = []
+    if where_str:
+        where_parts.append('(' + where_str + ')')
+    for t in key_cv:
+        if len(t) > 2:
+            where_parts.append('({0} = %)'.format(t[0]))
+            query_args.append(t[2])
+    query_str += 'WHERE ' + '\nAND\n'.join(where_parts) + '\n'
+    return (query_str, query_args)
 
 
 def drupal_db_query(db_obj=None, mode='read', key_cv=[], value_cv=[],
@@ -642,6 +698,47 @@ Exiting.'''.format(*map(nori.pps, [db_obj, mode, key_cv, value_cv,
         return drupal_db_read(db_obj, key_cv, value_cv)
     if mode == 'update':
         return drupal_db_update(db_obj, key_cv, value_cv, no_replicate)
+
+
+def drupal_db_read(db_obj=None, key_cv=[], value_cv=[]):
+
+    """
+    Do the actual work for generic Drupal DB reads.
+
+    Parameters:
+        see generic_drupal_db_query()
+
+    Dependencies:
+        functions: get_drupal_db_read_query(), generic_db_generator()
+        modules: sys, nori
+
+    """
+
+    query_str, query_args = get_drupal_db_read_query(key_cv, value_cv)
+
+    if query_str is None and query_args is None:
+        nori.core.email_logger.error(
+'''Internal Error: invalid field list supplied in call to
+drupal_db_read(); call was (in expanded notation):
+
+drupal_db_read(db_obj={0},
+               key_cv={1},
+               value_cv={2})
+
+Exiting.'''.format(*map(nori.pps, [db_obj, key_cv, value_cv]))
+        )
+        sys.exit(nore.core.exitvals['internal']['num'])
+
+    if not db_obj.execute(None, query_str, query_args, has_results=True):
+        return None
+
+    ret = db_obj.fetchall(None)
+    if not ret[0]:
+        return None
+    if not ret[1]:
+        return []
+    return ret[1]
+###TODO: needs more massaging because of optional columns
 
 
 def get_drupal_db_read_query(key_cv=[], value_cv=[]):
@@ -1101,46 +1198,10 @@ ORDER BY node.title, fcf.delta, f.delta
 
         return (query_str, query_args)
 
-#
-# should never be reached
-#
-return (None, None)
-
-
-def drupal_db_read(db_obj=None, key_cv=[], value_cv=[]):
-
-    """
-    Do the actual work for generic Drupal DB reads.
-
-    Parameters:
-        see generic_drupal_db_query()
-
-    Dependencies:
-        functions: get_drupal_db_read_query(), generic_db_generator()
-        modules: sys, nori
-
-    """
-
-    query_str, query_args = get_drupal_db_read_query(key_cv, value_cv)
-
-    if query_str is None and query_args is None:
-        nori.core.email_logger.error(
-'''Internal Error: invalid field list supplied in call to
-drupal_db_read(); call was (in expanded notation):
-
-drupal_db_read(db_obj={0},
-               key_cv={1},
-               value_cv={2})
-
-Exiting.'''.format(*map(nori.pps, [db_obj, key_cv, value_cv]))
-        )
-        sys.exit(nore.core.exitvals['internal']['num'])
-
-    if not db_obj.execute(None, query_str, query_args, has_results=True):
-        return None
-
-    return lambda: generic_db_generator((key_cv, value_cv))
-###TODO: needs more massaging because of optional columns
+    #
+    # should never be reached
+    #
+    return (None, None)
 
 
 def drupal_db_update(db_obj=None, key_cv=[], value_cv=[],
@@ -1179,109 +1240,120 @@ def delete_drupal_rel():
     pass
 
 
-def key_filter(key_vals):
+def key_filter(template_index, key_cv, row):
 
     """
-    Determine whether to act on a key from the source database.
+    Determine whether to act on a key from the database.
 
     Returns True (act) or False (don't act).
 
     Parameters:
-        key_vals: the keys tuple returned by the source database's query
-                  function
+        template_index: the index of the relevant template in the
+                        templates setting
+        key_cv: the key_cv argument to the query function that produced
+                the row
+        row: a single row from the results returned by the query
+             function
+        (see the description of the templates setting, above, for more
+        details)
 
     Dependencies:
-        config settings: key_mode, key_list
+        config settings: templates, key_mode, key_list
         modules: nori
 
     """
 
-    if nori.core.cfg['key_mode'] == 'all':
+    if (nori.core.cfg['key_mode'] == 'all' and
+          nori.core.cfg['templates'][template_index][12] == 'all')
         return True
 
-    k_vals = nori.scalar_to_tuple(key_vals)
-
-    found = False
-    for k_match in nori.core.cfg['key_list']:
-        if len(k_vals) < len(k_match):
-            return False  # shouldn't happen if the configs are sane
-        for i, match_val in enumerate(k_match):
-            if k_vals[i] != match_val:
-                continue
+    if nori.core.cfg['key_mode'] == 'all':
+        g_action = 1
+    else:
+        num_keys = len(key_cv)
+        found = False
+        for k_match in nori.core.cfg['key_list']:
+            if len(k_match) > num_keys:
+                return False  # shouldn't happen if the configs are sane
+            for i, match_val in enumerate(k_match):
+                if row[i] != match_val:
+                    break
             found = True
+            break
+        if nori.core.cfg['key_mode'] == 'include':
+            if found:
+                g_action = 1
+            else:
+                g_action = -1
+        if nori.core.cfg['key_mode'] == 'exclude':
+            if found:
+                g_action = -1
+            else:
+                g_action = 1
 
-    if nori.core.cfg['key_mode'] == 'include':
-        return found
+    if nori.core.cfg['templates'][template_index][12] == 'all':
+        t_action = 1
+    else:
+        num_keys = len(key_cv)
+        found = False
+        for k_match in nori.core.cfg['templates'][template_index][13]:
+            if len(k_match) > num_keys:
+                return False  # shouldn't happen if the configs are sane
+            for i, match_val in enumerate(k_match):
+                if row[i] != match_val:
+                    break
+            found = True
+            break
+        if nori.core.cfg['templates'][template_index][12] == 'include':
+            if found:
+                t_action = 1
+            else:
+                t_action = -1
+        if nori.core.cfg['templates'][template_index][12] == 'exclude':
+            if found:
+                t_action = -1
+            else:
+                t_action = 1
 
-    if nori.core.cfg['key_mode'] == 'exclude':
-        return not found
-
-    # should never be reached
+    if g_action + t_action = 2:
+        return True
     return False
 
 
-def key_copy(source_key_cv, dest_key_cv):
+def log_diff(template_index, exists_in_source, source_row, exists_in_dest,
+             dest_row):
     """
-    Transfer the 'key' values from the source sequences to the dest.
-    The two sequences must be the same length.
+    Record a difference between the two databases.
+    Note that 'source' and 'dest' refer to the actual source and
+    destination databases, after applying the value of the 'reverse'
+    setting.
     Parameters:
-        source_key_cv: the key_cv sequence returned from the source
-                       database
-        dest_key_cv: the key cv sequence from the template for the
-                     destination database
+        template_index: the index of the relevant template in the
+                        templates setting
+        exists_in_source: True if the relevant key exists in the source
+                          database, otherwise False
+        source_row: the relevant results row from the source DB's query
+                    function
+        exists_in_dest: True if the relevant key exists in the
+                        destination database, otherwise False
+        dest_row: the relevant results row from the destination DB's
+                  query function
+    Dependencies:
+        config settings: templates
+        globals: diff_list
+        modules: nori
     """
-    new_dest_key_cv = []
-    for i, s_key in enumerate(source_key_cv):
-        if len(s_key) < 3:
-            new_dest_key_cv.append(dest_key_cv[i])
-        else:
-            new_dest_key_cv.append(dest_key_cv[i][0], dest_key_cv[i][1],
-                                   s_key[2])
-    return new_dest_key_cv
-
-
-def key_value_copy(source_key_cv, source_value_cv, dest_key_cv,
-                   dest_value_cv):
-    """
-    Transfer the 'key' and 'value' values from source to dest seqs.
-    The pairs of sequences must be the same length.
-    Parameters:
-        source_key_cv: the key_cv sequence returned from the source
-                       database
-        source_value_cv: the value_cv sequence returned from the source
-                       database
-        dest_key_cv: the key cv sequence from the template for the
-                     destination database
-        dest_value_cv: the value cv sequence from the template for the
-                     destination database
-    """
-    new_dest_key_cv = []
-    for i, s_key in enumerate(source_key_cv):
-        if len(s_key) < 3:
-            new_dest_key_cv.append(dest_key_cv[i])
-        else:
-            new_dest_key_cv.append(dest_key_cv[i][0], dest_key_cv[i][1],
-                                   s_key[2])
-    new_dest_value_cv = []
-    for i, s_value in enumerate(source_value_cv):
-        if len(s_value) < 3:
-            new_dest_value_cv.append(dest_value_cv[i])
-        else:
-            new_dest_value_cv.append(dest_value_cv[i][0],
-                                     dest_value_cv[i][1], s_value[2])
-    return (new_dest_key_cv, new_dest_value_cv)
-
-
-def do_diff_alert():
-    pass
-
-
-def do_diff_log():
-    pass
-
-
-def do_check_log():
-    pass
+    diff_list.append((template_index, exists_in_source, source_row,
+                      exists_in_dest, dest_row, False))
+    nori.core.status_logger.info(
+        'Diff found for template {0} ({1}):\n{2}\n{3}' .
+        format(template_index,
+               nori.pps(nori.core.cfg['templates'][template_index][0]),
+               nori.pps(source_row) if exists_in_source
+                                    else '[no match in source database]',
+               nori.pps(dest_row) if exists_in_dest
+                                  else '[no match in destination database]')
+    )
 
 
 def clear_drupal_cache():
@@ -1293,114 +1365,163 @@ def run_mode_hook():
     """
     Do the actual work.
     Dependencies:
-        config settings: templates, reverse
-        globals: sourcedb, destdb
+        config settings: reverse, templates, template_mode,
+                         template_list
+        globals: diff_list, sourcedb, destdb
         functions: generic_db_query(), drupal_db_query(), key_filter(),
-                   key_copy(), (functions in templates)
-        modules: copy, nori
+                   log_diff(), (functions in templates)
+        modules: nori
         Python: 2.0/3.2, for callable()
     """
 
     sourcedb.connect()
     destdb.connect()
 
-    for template in nori.core.cfg['templates']:
+    for t_index, template in enumerate(nori.core.cfg['templates']):
+        # note: 'source'/'s_' and 'dest'/'d_' below refer to the
+        # actual source and destination DBs, after applying the value of
+        # the 'reverse' setting
         t_name = template[0]
         t_multiple = template[1]
-        t_source_type = template[2]
-        t_source_func = template[3]
-        t_source_args = template[4][0]
-        t_source_kwargs = template[4][1]
-        t_to_dest_func = template[5]
-        t_source_change_func = template[6]
-        t_dest_type = template[7]
-        t_dest_func = template[8]
-        t_dest_args = template[9][0]
-        t_dest_kwargs = template[9][1]
-        t_to_source_func = template[10]
-        t_dest_change_func = template[11]
+        if not nori.core.cfg['reverse']:
+            source_type = template[2]
+            source_func = template[3]
+            source_args = template[4][0]
+            source_kwargs = template[4][1]
+            to_dest_func = template[5]
+            source_change_func = template[6]
+            dest_type = template[7]
+            dest_func = template[8]
+            dest_args = template[9][0]
+            dest_kwargs = template[9][1]
+            to_source_func = template[10]
+            dest_change_func = template[11]
+        else:
+            source_type = template[7]
+            source_func = template[8]
+            source_args = template[9][0]
+            source_kwargs = template[9][1]
+            to_dest_func = template[10]
+            source_change_func = template[11]
+            dest_type = template[2]
+            dest_func = template[3]
+            dest_args = template[4][0]
+            dest_kwargs = template[4][1]
+            to_source_func = template[5]
+            dest_change_func = template[6]
+        t_key_mode = template[12]
+        t_key_list = template[13]
 
         # filter by template
         if (nori.cfg['template_mode'] == 'include' and
-              t_name not in nori.cfg['template_list']):
+              name not in nori.cfg['template_list']):
             continue
         elif (nori.cfg['template_mode'] == 'exclude' and
-                t_name in nori.cfg['template_list']):
+                name in nori.cfg['template_list']):
             continue
 
         # handle unspecified functions
-        if t_source_func is None:
-            if t_source_type == 'generic':
-                t_source_func = generic_db_query
-            elif t_source_type == 'drupal':
-                t_source_func = drupal_db_query
-        if t_dest_func is None:
-            if t_dest_type == 'generic':
-                t_dest_func = generic_db_query
-            elif t_dest_type == 'drupal':
-                t_dest_func = drupal_db_query
+        if source_func is None:
+            if source_type == 'generic':
+                source_func = generic_db_query
+            elif source_type == 'drupal':
+                source_func = drupal_db_query
+        if dest_func is None:
+            if dest_type == 'generic':
+                dest_func = generic_db_query
+            elif dest_type == 'drupal':
+                dest_func = drupal_db_query
 
         # get the source data
-        if not nori.core.cfg['reverse']:
-            s_ret = t_source_func(*t_source_args, db_obj=sourcedb,
-                                  mode='read', **t_source_kwargs)
-        else:
-            s_ret = t_dest_func(*t_dest_args, db_obj=destdb,
-                                mode='read', **t_dest_kwargs)
-
-        if s_ret is None:
+        s_rows = source_func(*source_args, db_obj=sourcedb, mode='read',
+                             **source_kwargs)
+        if s_rows is None:
             # shouldn't actually happen; errors will cause the script to
             # exit before this, as currently written
             break
 
-        for s_row in s_ret:  # s_ret is a generator: (keys, values)
-            s_keys = s_row[0]
-            s_values = s_row[1]
+        # get the destination data
+        d_rows = dest_func(*dest_args, db_obj=destdb, mode='read',
+                           **dest_kwargs)
+        if d_rows is None:
+            # shouldn't actually happen; errors will cause the
+            # script to exit before this, as currently written
+            break
 
+        # diff and check for missing rows in the destination DB
+        for s_row in s_rows:
             # apply transform
-            if not nori.core.cfg['reverse']:
-                if t_to_dest_function and callable(t_to_dest_function):
-                    s_keys, s_values = t_to_dest_function(
-                        template, s_keys, s_values
-                    )
-            else:
-                if t_to_source_function and callable(t_to_source_function):
-                    s_keys, s_values = t_to_source_function(
-                        template, s_keys, s_values
-                    )
+            if to_dest_func and callable(to_dest_func):
+                s_row = to_dest_func(template, s_row)
 
             # filter by keys
-            if not key_filter(s_keys):
+            if not key_filter(t_index, source_kwargs['key_cv'], s_row):
                 continue
 
-            # get the destination data
-            if not nori.core.cfg['reverse']:
-                new_key_cv = key_copy(s_keys, t_dest_kwargs['key_cv'])
-                new_t_dest_kwargs = copy.copy(t_dest_kwargs)
-                new_t_dest_kwargs['key_cv'] = new_key_cv
-                d_ret = t_dest_func(*t_dest_args, db_obj=destdb,
-                                    mode='read', **t_dest_kwargs)
-            else:
-                new_key_cv = key_copy(s_keys, t_source_kwargs['key_cv'])
-                new_t_source_kwargs = copy.copy(t_source_kwargs)
-                new_t_source_kwargs['key_cv'] = new_key_cv
-                d_ret = t_source_func(*t_source_args, db_obj=sourcedb,
-                                      mode='read', **t_source_kwargs)
+            found = False
+            s_keys = s_row[0:len(source_kwargs['key_cv'])]
+            s_vals = s_row[len(source_kwargs['key_cv']):]
+            for d_row in d_rows:
+                # apply transform
+                if to_source_func and callable(to_source_func):
+                    d_row = to_source_func(template, d_row)
 
-            if d_ret is None:
-                # shouldn't actually happen; errors will cause the
-                # script to exit before this, as currently written
-                break
+                # filter by keys
+                if not key_filter(t_index, dest_kwargs['key_cv'], d_row):
+                    continue
+
+                # the actual diff / row check
+                d_keys = d_row[0:len(dest_kwargs['key_cv'])]
+                d_vals = d_row[len(dest_kwargs['key_cv']):]
+                if d_keys == s_keys:
+                    found = True
+                    if d_vals != s_vals:
+                        log_diff(t_index, True, s_row, True, d_row)
+                    break
+
+            # row not found
+            if not found:
+                log_diff(t_index, True, s_row, False, None)
+
+        # check for missing rows in the source DB
+        for d_row in d_rows:
+            # apply transform
+            if to_source_func and callable(to_source_func):
+                d_row = to_source_func(template, d_row)
+
+            # filter by keys
+            if not key_filter(t_index, _kwargs['key_cv'], d_row):
+                continue
+
+            found = False
+            d_keys = d_row[0:len(dest_kwargs['key_cv'])]
+            d_vals = d_row[len(dest_kwargs['key_cv']):]
+            for s_row in s_rows:
+                # apply transform
+                if to_dest_func and callable(to_dest_func):
+                    s_row = to_dest_func(template, s_row)
+
+                # filter by keys
+                if not key_filter(t_index, source_kwargs['key_cv'], s_row):
+                    continue
+
+                # the actual row check
+                s_keys = s_row[0:len(source_kwargs['key_cv'])]
+                s_vals = s_row[len(source_kwargs['key_cv']):]
+                if s_keys == d_keys:
+                    found = True
+                    break
+
+            # row not found
+            if not found:
+                log_diff(t_index, False, None, True, d_row)
 
 ###TODO: multiples
-
-            
-
-            #diff
-            #log
             #change, incl. callbacks
-
     #overall change callbacks
+    #report
+
+    
 
     destdb.close()
     sourcedb.close()
