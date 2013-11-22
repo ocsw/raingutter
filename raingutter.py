@@ -680,7 +680,7 @@ def get_drupal_db_read_query(key_cv=[], value_cv=[]):
         # handle specified node value
         node_value_cond = ''
         if len(node_cv) > 2:
-            node_value_cond = 'AND {0} = %'.format(key_column)
+            node_value_cond = 'AND {0} = %s'.format(key_column)
 
         # field details
         field_cv = value_cv[0]
@@ -702,7 +702,7 @@ def get_drupal_db_read_query(key_cv=[], value_cv=[]):
         # handle specified field value
         field_value_cond = ''
         if len(field_cv) > 2:
-            field_value_cond = 'AND {0} = %'.format(value_column)
+            field_value_cond = 'AND {0} = %s'.format(value_column)
 
         # query string and arguments
         query_str = (
@@ -717,7 +717,7 @@ WHERE (node.vid IN
        (SELECT max(vid)
         FROM node
         GROUP BY nid))
-AND node.type = %
+AND node.type = %s
 {4}
 {5}
 AND f.deleted = 0
@@ -760,7 +760,7 @@ ORDER BY node.title, f.delta
         # handle specified key-node value
         k_node_value_cond = ''
         if len(k_node_cv) > 2:
-            k_node_value_cond = 'AND {0} = %'.format(key_column)
+            k_node_value_cond = 'AND {0} = %s'.format(key_column)
 
         # relation details
         rel_cv = key_cv[1]
@@ -788,12 +788,12 @@ ORDER BY node.title, f.delta
         if v_node_type is None:
             extra_value_cols = ', v_node.type'
         else:
-            v_node_type_cond = 'AND v_node.type = %'
+            v_node_type_cond = 'AND v_node.type = %s'
 
         # handle specified value-node value
         v_node_value_cond = ''
         if len(v_node_cv) > 2:
-            v_node_value_cond = 'AND {0} = %'.format(value_column)
+            v_node_value_cond = 'AND {0} = %s'.format(value_column)
 
         # query string and arguments
         query_str = (
@@ -812,14 +812,14 @@ WHERE (k_node.vid IN
        (SELECT max(vid)
         FROM node
         GROUP BY nid))
-AND k_node.type = %
+AND k_node.type = %s
 {2}
 AND (e1.revision_id IN
      (SELECT max(revision_id)
       FROM field_data_endpoints
       GROUP BY entity_id))
 AND e1.entity_type = 'relation'
-AND e1.bundle = %
+AND e1.bundle = %s
 AND e1.endpoints_entity_type = 'node'
 AND e1.deleted = 0
 AND e2.endpoints_entity_type = 'node'
@@ -873,7 +873,7 @@ ORDER BY k_node.title, e1.entity_id, v_node.title
         # handle specified node1 value
         node1_value_cond = ''
         if len(node1_cv) > 2:
-            node1_value_cond = 'AND {0} = %'.format(key_column_1)
+            node1_value_cond = 'AND {0} = %s'.format(key_column_1)
 
         # relation details
         rel_cv = key_cv[1]
@@ -898,7 +898,7 @@ ORDER BY k_node.title, e1.entity_id, v_node.title
         # handle specified node2 value
         node2_value_cond = ''
         if len(node2_cv) > 2:
-            node2_value_cond = 'AND {0} = %'.format(key_column_2)
+            node2_value_cond = 'AND {0} = %s'.format(key_column_2)
 
         # field details
         field_cv = value_cv[0]
@@ -920,7 +920,7 @@ ORDER BY k_node.title, e1.entity_id, v_node.title
         # handle specified field value
         field_value_cond = ''
         if len(field_cv) > 2:
-            field_value_cond = 'AND {0} = %'.format(value_column)
+            field_value_cond = 'AND {0} = %s'.format(value_column)
 
         # query string and arguments
         query_str = (
@@ -944,14 +944,14 @@ WHERE (node1.vid IN
        (SELECT max(vid)
         FROM node
         GROUP BY nid))
-AND node1.type = %
+AND node1.type = %s
 {4}
 AND (e1.revision_id IN
      (SELECT max(revision_id)
       FROM field_data_endpoints
       GROUP BY entity_id))
 AND e1.entity_type = 'relation'
-AND e1.bundle = %
+AND e1.bundle = %s
 AND e1.endpoints_entity_type = 'node'
 AND e1.deleted = 0
 AND e2.endpoints_entity_type = 'node'
@@ -960,7 +960,7 @@ AND (node2.vid IN
      (SELECT max(vid)
       FROM node
       GROUP BY nid))
-AND node2.type = %
+AND node2.type = %s
 {5}
 AND f.entity_type = 'relation'
 AND f.deleted = 0
@@ -1008,7 +1008,7 @@ ORDER BY k_node.title, e1.entity_id, f.delta
         # handle specified node value
         node_value_cond = ''
         if len(node_cv) > 2:
-            node_value_cond = 'AND {0} = %'.format(key_column)
+            node_value_cond = 'AND {0} = %s'.format(key_column)
 
         # fc details
         fc_cv = key_cv[1]
@@ -1028,7 +1028,7 @@ ORDER BY k_node.title, e1.entity_id, f.delta
         # handle specified fc value
         fc_value_cond = ''
         if len(fc_cv) > 2:
-            fc_value_cond = 'AND {0} = %'.format(extra_key_column)
+            fc_value_cond = 'AND {0} = %s'.format(extra_key_column)
 
         # field details
         field_cv = value_cv[0]
@@ -1050,7 +1050,7 @@ ORDER BY k_node.title, e1.entity_id, f.delta
         # handle specified field value
         field_value_cond = ''
         if len(field_cv) > 2:
-            field_value_cond = 'AND {0} = %'.format(value_column)
+            field_value_cond = 'AND {0} = %s'.format(value_column)
 
         # query string and arguments
         query_str = (
@@ -1072,7 +1072,7 @@ WHERE (node.vid IN
        (SELECT max(vid)
         FROM node
         GROUP BY nid))
-AND node.type = %
+AND node.type = %s
 {5}
 AND fcf.entity_type = 'node'
 AND fcf.deleted = 0
