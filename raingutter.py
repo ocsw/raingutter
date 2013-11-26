@@ -140,6 +140,23 @@ Can be True or False.
     cl_coercer=nori.str_to_bool,
 )
 
+nori.core.config_settings['bidir'] = dict(
+    descr=(
+'''
+Check for entries which are present in the destination database but not in
+the source database?
+
+(The other way around will always be checked.  'Source' and 'destination'
+are after taking the value of the 'reverse' setting into account.  This only
+checks for missing entries; it does not add them to the source database.)
+
+Can be True or False.
+'''
+    ),
+    default='True',
+    cl_coercer=nori.str_to_bool,
+)
+
 nori.core.config_settings['templates'] = dict(
     descr=(
 '''
@@ -1741,37 +1758,38 @@ def run_mode_hook():
                 log_diff(t_index, True, s_row, False, None)
 
         # check for missing rows in the source DB
-        for d_row in d_rows:
-            # apply transform
-            if to_source_func and callable(to_source_func):
-                d_row = to_source_func(template, d_row)
-
-            # filter by keys
-            if not key_filter(t_index, dest_kwargs['key_cv'], d_row):
-                continue
-
-            found = False
-            d_keys = d_row[0:len(dest_kwargs['key_cv'])]
-            d_vals = d_row[len(dest_kwargs['key_cv']):]
-            for s_row in s_rows:
+        if nori.core.cfg['bidir']:
+            for d_row in d_rows:
                 # apply transform
-                if to_dest_func and callable(to_dest_func):
-                    s_row = to_dest_func(template, s_row)
+                if to_source_func and callable(to_source_func):
+                    d_row = to_source_func(template, d_row)
 
                 # filter by keys
-                if not key_filter(t_index, source_kwargs['key_cv'], s_row):
+                if not key_filter(t_index, dest_kwargs['key_cv'], d_row):
                     continue
 
-                # the actual row check
-                s_keys = s_row[0:len(source_kwargs['key_cv'])]
-                s_vals = s_row[len(source_kwargs['key_cv']):]
-                if s_keys == d_keys:
-                    found = True
-                    break
+                found = False
+                d_keys = d_row[0:len(dest_kwargs['key_cv'])]
+                d_vals = d_row[len(dest_kwargs['key_cv']):]
+                for s_row in s_rows:
+                    # apply transform
+                    if to_dest_func and callable(to_dest_func):
+                        s_row = to_dest_func(template, s_row)
 
-            # row not found
-            if not found:
-                log_diff(t_index, False, None, True, d_row)
+                    # filter by keys
+                    if not key_filter(t_index, source_kwargs['key_cv'], s_row):
+                        continue
+
+                    # the actual row check
+                    s_keys = s_row[0:len(source_kwargs['key_cv'])]
+                    s_vals = s_row[len(source_kwargs['key_cv']):]
+                    if s_keys == d_keys:
+                        found = True
+                        break
+
+                # row not found
+                if not found:
+                    log_diff(t_index, False, None, True, d_row)
 
 ###TODO: multiples
             #change, incl. action check
