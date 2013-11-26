@@ -1424,68 +1424,44 @@ def key_filter(template_index, key_cv, row):
 
     """
 
+    def find_keys(key_mode, key_list, key_cv, row):
+        """Search for a match between a key list and a row."""
+        if key_mode == 'all':
+            return True
+        else:
+            num_keys = len(key_cv)
+            found = False
+            for k_match in key_list:
+                k_match = nori.scalar_to_tuple(k_match)
+                # sanity check
+                if len(k_match) > num_keys:
+                    return False
+                for i, match_val in enumerate(k_match):
+                    if row[i] != match_val:
+                        break
+                    if i == len(k_match) - 1:
+                        found = True
+                if found:
+                    break
+            if key_mode == 'include':
+                return found
+            if key_mode == 'exclude':
+                return not found
+
     if (nori.core.cfg['key_mode'] == 'all' and
           nori.core.cfg['templates'][template_index][12] == 'all'):
         return True
 
-    if nori.core.cfg['key_mode'] == 'all':
-        g_action = 1
-    else:
-        num_keys = len(key_cv)
-        found = False
-        for k_match in nori.core.cfg['key_list']:
-            k_match = nori.scalar_to_tuple(k_match)
-            if len(k_match) > num_keys:
-                return False  # shouldn't happen if the configs are sane
-            for i, match_val in enumerate(k_match):
-                if row[i] != match_val:
-                    break
-                if i == len(k_match) - 1:
-                    found = True
-            if found:
-                break
-        if nori.core.cfg['key_mode'] == 'include':
-            if found:
-                g_action = 1
-            else:
-                g_action = -1
-        if nori.core.cfg['key_mode'] == 'exclude':
-            if found:
-                g_action = -1
-            else:
-                g_action = 1
+    if not find_keys(nori.core.cfg['key_mode'], nori.core.cfg['key_list'],
+                     key_cv, row):
+        return False
 
-    if nori.core.cfg['templates'][template_index][12] == 'all':
-        t_action = 1
-    else:
-        num_keys = len(key_cv)
-        found = False
-        for k_match in nori.core.cfg['templates'][template_index][13]:
-            k_match = nori.scalar_to_tuple(k_match)
-            if len(k_match) > num_keys:
-                return False  # shouldn't happen if the configs are sane
-            for i, match_val in enumerate(k_match):
-                if row[i] != match_val:
-                    break
-                if i == len(k_match) - 1:
-                    found = True
-            if found:
-                break
-        if nori.core.cfg['templates'][template_index][12] == 'include':
-            if found:
-                t_action = 1
-            else:
-                t_action = -1
-        if nori.core.cfg['templates'][template_index][12] == 'exclude':
-            if found:
-                t_action = -1
-            else:
-                t_action = 1
+    if not find_keys(nori.core.cfg['templates'][template_index][12],
+                     nori.core.cfg['templates'][template_index][13],
+                     key_cv, row):
+        return False
 
-    print(row, g_action, t_action)
-    if g_action + t_action == 2:
-        return True
-    return False
+    return True
 
 
 def log_diff(template_index, exists_in_source, source_row, exists_in_dest,
