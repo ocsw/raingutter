@@ -6,8 +6,6 @@ validate configs - incl. drupal chains, incl. key list length
 configs for OCS fields
 testing
 
-email handler - 'alert' vs....
-
 nori import
 
 drupal read:
@@ -24,6 +22,7 @@ redundant output log messages?
 db/ssh conn msgs: identifiers
 
 postgres table list
+callable check
 
 no_replicate for updates
     SET sql_log_bin=0;

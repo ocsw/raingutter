@@ -189,9 +189,10 @@ None where appropriate.
 Functions may be specified as None to use defaults appropriate to the given
 database type.
 
-The template name must be unique across all templates.  It is recommended
-not to include spaces in the names, for easier specification on the command
-line.
+The template name should be unique across all templates, although this is
+not enforced (template indexes are provided for disambiguation).  It is
+recommended not to include spaces in the names, for easier specification on
+the command line.
 
 The DB query functions must take three keyword arguments in addition to any
 other *args and **kwargs:
@@ -207,7 +208,8 @@ other *args and **kwargs:
 Note that the format of the column names may differ between the two
 databases, and the values may also require transformation (see below).
 What matters is that the sets of key and value columns for each database
-correspond to each other and are the same length.
+correspond to each other and are the same length (after the transform
+functions have been applied).
 
 As described above, key_cv and value_cv contain strings referring to data
 types; particular data types that can/should be supported include:
@@ -540,8 +542,315 @@ Ignored if send_report_emails is False.
 #                              FUNCTIONS
 ########################################################################
 
+def _validate_drupal_chain(key_index, key_cv, value_index, value_cv):
+
+    """
+    Validate a Drupal key_cv/value_cv chain.
+
+    Parameters:
+        key_index: the index tuple of the key_cv dict in the
+                   templates setting
+        key_cv: the actual key_cv dict
+        value_index: the index tuple of the value_cv dict in the
+                     templates setting
+        value_cv: the actual value_cv dict
+
+    Dependencies:
+        config settings: templates
+        modules: nori
+
+    """
+
+    # key_cv
+    nori.setting_check_not_empty(key_index)
+    key_entities = []
+    for i, cv in enumerate(key_cv):
+        validate_drupal_cv(key_index + (i, ), cv[i])
+        key_entities.append(key_cv[i][0][0])
+
+    # value_cv
+    nori.setting_check_not_empty(value_index)
+    value_entities = []
+    for i, cv in enumerate(value_cv):
+        validate_drupal_cv(value_index + (i, ), cv[i])
+        value_entities.append(value_cv[i][0][0])
+
+
+    
+###TODO
+'''
+field*S*?
+        node -> field (including term references)
+        node -> relation -> node(s)
+        node -> relation & node(s) -> relation_field (incl. term refs)
+        node -> fc -> field (including term references)
+
+        * each step in the chains listed above is a tuple inside one of
+          these sequences; the last step goes in value_cv, the rest in
+          key_cv
+        * the first identifier in key_cv must be a node
+        * values_cv may not contain field collections or relations (yet)
+          and may only contain nodes if the last tuple in key_cv is a
+          relation
+        * there may be multiple identifiers in values_cv only if they
+          all refer to items which are in the same container (i.e.,
+          node, field collection, or relation)
+'''
+
+
+def _validate_drupal_cv(cv_index, cv):
+
+    """
+    Validate a single Drupal key_cv/value_cv entry.
+
+    Parameters:
+        cv_index: the index tuple of the entry in the templates setting
+        cv: the entry itself
+
+    Dependencies:
+        config settings: templates
+        modules: nori
+
+    """
+
+    ident_index = cv_index + (0, )
+    ident = cv[0]
+    data_type_index = cv_index + (1, )
+    data_type = cv[1]
+
+    nori.setting_check_type(cv_index, nori.core.CONTAINER_TYPES)
+    nori.setting_check_len(cv_index, 2, 3)
+
+    nori.setting_check_not_empty(ident_index)
+    nori.setting_check_list(
+        ident_index + (0, ),
+        ['node', 'fc', 'relation', 'field', 'title', 'label']
+    )
+
+    if ident[0] == 'node':
+        nori.setting_check_len(ident_index, 3, 3)
+###TODO        nori.setting_check_type(ident_index + (1, ), nori.core.STRING_TYPES + (nori.core.NONE_TYPE, ))
+        nori.setting_check_list(ident_index + (2, ), ['id', 'title'])
+    elif ident[0] == 'fc':
+        nori.setting_check_len(ident_index, 3, 3)
+        nori.setting_check_not_blank(ident_index + (1, ))
+        nori.setting_check_list(ident_index + (2, ), ['id', 'label'])
+    elif ident[0] == 'relation':
+        nori.setting_check_len(ident_index, 2, 2)
+        nori.setting_check_not_blank(ident_index + (1, ))
+    elif ident[0] == 'field':
+        nori.setting_check_len(ident_index, 2, 2)
+        nori.setting_check_not_blank(ident_index + (1, ))
+    elif ident[0] == 'title':
+        nori.setting_check_len(ident_index, 1, 1)
+    elif ident[0] == 'label':
+        nori.setting_check_len(ident_index, 1, 1)
+
+    if ident[0] != 'relation':
+        nori.setting_check_not_blank(data_type_index)
+
+###TODO
+'''
+!!!!!
+              * for nodes: ('node', content_type, ID_type)
+                    * content_type is required for 'key' data, but
+                      optional for 'value' data; specify None to omit it
+                      in the latter case
+
+The entries in the key list will be compared with the key columns of each
+data row beginning at the first column.  It is an error for a row to have
+fewer key columns than are in the key list, but if a row has more key
+columns, columns which have no corresponding entry in the key list will be
+ignored for purposes of the comparison.
+'''
+
+
 def validate_config():
-    pass
+
+    """
+    Validate diff/sync and reporting config settings.
+
+    Dependencies:
+        config settings: action, reverse, bidir, templates,
+                         template_mode, template_list, key_mode,
+                         key_list, sourcedb_change_callback,
+                         sourcedb_change_callback_args,
+                         destdb_change_callback,
+                         destdb_change_callback_args, report_order,
+                         send_report_emails, report_emails_from,
+                         report_emails_to, report_emails_subject,
+                         report_emails_host, report_emails_cred,
+                         report_emails_sec
+        modules: nori
+
+    """
+
+    # diff/sync settings, not including templates (see below)
+    nori.setting_check_list('action', ['diff', 'sync'])
+    nori.setting_check_type('reverse', bool)
+    nori.setting_check_type('bidir', bool)
+    nori.setting_check_list('template_mode', ['all', 'include', 'exclude'])
+    if nori.core.cfg['template_mode'] != 'all':
+        nori.setting_check_not_empty('template_list')
+        for i, t_name in enumerate(nori.core.cfg['template_list']):
+            nori.check_setting_type(('template_list', i),
+                                    nori.core.STRING_TYPES)
+    nori.setting_check_list('key_mode', ['all', 'include', 'exclude'])
+    if nori.core.cfg['key_mode'] != 'all':
+        nori.setting_check_not_empty('key_list')
+    nori.setting_check_callable('sourcedb_change_callback',
+                                may_be_none=True)
+    if nori.core.cfg['sourcedb_change_callback']:
+        nori.setting_check_type('sourcedb_change_callback_args',
+                                nori.core.CONTAINER_TYPES)
+        nori.setting_check_len('sourcedb_change_callback_args', 2, 2)
+        nori.setting_check_type(('sourcedb_change_callback_args', 0),
+                                nori.core.CONTAINER_TYPES)
+        nori.setting_check_type(('sourcedb_change_callback_args', 1),
+                                nori.core.MAPPING_TYPES)
+    nori.setting_check_callable('destdb_change_callback', may_be_none=True)
+    if nori.core.cfg['destdb_change_callback']:
+        nori.setting_check_type('destdb_change_callback_args',
+                                nori.core.CONTAINER_TYPES)
+        nori.setting_check_len('destdb_change_callback_args', 2, 2)
+        nori.setting_check_type(('destdb_change_callback_args', 0),
+                                nori.core.CONTAINER_TYPES)
+        nori.setting_check_type(('destdb_change_callback_args', 1),
+                                nori.core.MAPPING_TYPES)
+
+    # templates: general
+    nori.setting_check_not_empty('templates')
+    for i, template in enumerate(nori.core.cfg['templates']):
+        nori.setting_check_type(('templates', i), nori.core.CONTAINER_TYPES)
+        nori.setting_check_len(('templates', i), 14, 14)
+        # template name
+        nori.setting_check_type(('templates', i, 0), nori.core.STRING_TYPES)
+        # multiple rows per key?
+        nori.setting_check_type(('templates', i, 1), bool)
+        # source-DB type
+        nori.setting_check_list(('templates', i, 2), ['generic', 'drupal'])
+        # source-DB query function
+        nori.setting_check_callable(('templates', i, 3), may_be_none=True)
+        # source-DB query function arguments
+        nori.setting_check_type(('templates', i, 4),
+                                nori.core.CONTAINER_TYPES)
+        nori.setting_check_len(('templates', i, 4), 2, 2)
+        nori.setting_check_type(('templates', i, 4, 0),
+                                nori.core.CONTAINER_TYPES)
+        nori.setting_check_type(('templates', i, 4, 1),
+                                nori.core.MAPPING_TYPES)
+        # to-dest transform function
+        nori.setting_check_callable(('templates', i, 5), may_be_none=True)
+        # source-DB change callback function
+        nori.setting_check_callable(('templates', i, 6), may_be_none=True)
+        # dest-DB type
+        nori.setting_check_list(('templates', i, 7), ['generic', 'drupal'])
+        # dest-DB query function
+        nori.setting_check_callable(('templates', i, 8), may_be_none=True)
+        # dest-DB query function arguments
+        nori.setting_check_type(('templates', i, 9),
+                                nori.core.CONTAINER_TYPES)
+        nori.setting_check_len(('templates', i, 9), 2, 2)
+        nori.setting_check_type(('templates', i, 9, 0),
+                                nori.core.CONTAINER_TYPES)
+        nori.setting_check_type(('templates', i, 9, 1),
+                                nori.core.MAPPING_TYPES)
+        # to-source transform function
+        nori.setting_check_callable(('templates', i, 10), may_be_none=True)
+        # dest-DB change callback function
+        nori.setting_check_callable(('templates', i, 11), may_be_none=True)
+        # key mode
+        nori.setting_check_list(('templates', i, 12),
+                                ['all', 'include', 'exclude'])
+        if nori.core.cfg['templates'][i][12] != 'all':
+            # key list
+            nori.setting_check_not_empty(('templates', i, 13))
+
+        # templates: query-function arguments
+        s_key_ind = ('templates', i, 4, 1, 'key_cv')
+        s_key_cv = nori.core.cfg['templates'][i][4][1]['key_cv']
+        s_value_ind = ('templates', i, 4, 1, 'value_cv')
+        s_value_cv = nori.core.cfg['templates'][i][4][1]['value_cv']
+        s_db_type = nori.core.cfg['templates'][i][2]
+        d_key_ind = ('templates', i, 9, 1, 'key_cv')
+        d_key_cv = nori.core.cfg['templates'][i][9][1]['key_cv']
+        d_value_ind = ('templates', i, 9, 1, 'value_cv')
+        d_value_cv = nori.core.cfg['templates'][i][9][1]['value_cv']
+        d_db_type = nori.core.cfg['templates'][i][7]
+        if db_type == 'generic':
+            for index, cv, db_type in [
+                    (s_key_ind, s_key_cv, s_db_type),
+                    (s_value_ind, s_value_cv, s_db_type),
+                    (d_key_ind, d_key_cv, d_db_type),
+                    (d_value_ind, d_value_cv, d_db_type),
+                   ]:
+                nori.setting_check_not_empty(index)
+                # cv tuples
+                for ci, col in enumerate(cv):
+                    nori.setting_check_type(index + (ci, ),
+                                            nori.core.CONTAINER_TYPES)
+                    nori.setting_check_len(index + (ci, ), 2, 3)
+                    # column identifier
+                    nori.setting_check_not_blank(index + (ci, 0))
+                    # data type
+                    nori.setting_check_not_blank(index + (ci, 1))
+        elif db_type == 'drupal':
+            _validate_drupal_chain(s_key_ind, s_key_cv, s_value_ind,
+                                   s_value_cv)
+            _validate_drupal_chain(d_key_ind, d_key_cv, d_value_ind,
+                                   d_value_cv)
+
+    # reporting settings
+    nori.setting_check_list('report_order', ['template', 'keys'])
+    nori.setting_check_type('send_report_emails', bool)
+    if nori.core.cfg['send_report_emails']:
+        nori.setting_check_not_blank('report_emails_from')
+        nori.setting_check_type('report_emails_to', list)
+        nori.setting_check_no_blanks('report_emails_to')
+        nori.setting_check_type('report_emails_subject',
+                                nori.core.STRING_TYPES)
+        if nori.setting_check_type(
+               'report_emails_host', nori.core.STRING_TYPES + (tuple, )
+              ) == tuple:
+            nori.setting_check_len('report_emails_host', 2, 2)
+            nori.setting_check_not_blank(('report_emails_host', 0))
+            nori.setting_check_num(('report_emails_host', 1), 1, 65535)
+        else:
+            nori.setting_check_not_blank('report_emails_host')
+        if nori.setting_check_type(
+               'report_emails_cred', (nori.core.NONE_TYPE, tuple)
+              ) is not nori.core.NONE_TYPE:
+            nori.setting_check_len('report_emails_cred', 2, 2)
+            nori.setting_check_no_blanks('report_emails_cred')
+        if nori.setting_check_type(
+               'report_emails_sec', (nori.core.NONE_TYPE, tuple)
+              ) is not nori.core.NONE_TYPE:
+            nori.setting_check_len('report_emails_sec', 0, 2)
+            for i, f in enumerate(nori.core.cfg['report_emails_sec']):
+                nori.setting_check_file_read(('report_emails_sec', i))
+
+
+class SMTPReportHandler(logging.handlers.SMTPHandler):
+
+    """Override SMTPHandler to add diagnostics to the email."""
+
+    def emit(self, record):
+        """
+        Add diagnostics to the message, and log that an email was sent.
+        Dependencies:
+            config settings: report_emails_to
+            modules: copy, nori
+        """
+        # use a copy so parent loggers won't see the changed message
+        r = copy.copy(record)
+        if r.msg[-1] != '\n':
+            r.msg += '\n'
+        r.msg += nori.email_diagnostics()
+        super(SMTPReportHandler, self).emit(r)
+        nori.core.status_logger.info(
+            'Report email sent to {0}.' .
+            format(nori.core.cfg['report_emails_to'])
+        )
 
 
 def init_reporting():
@@ -552,13 +861,14 @@ def init_reporting():
                          report_emails_subject, report_emails_cred,
                          report_emails_sec
         globals: email_reporter
-        modules: logging, logging.handlers, nori
+        classes: SMTPReportHandler
+        modules: logging, nori
     """
     global email_reporter
     if nori.core.cfg['send_report_emails']:
         email_reporter = logging.getLogger(__name__ + '.reportemail')
         email_reporter.propagate = False
-        email_handler = nori.SMTPDiagHandler(
+        email_handler = SMTPReportHandler(
             nori.core.cfg['report_emails_host'],
             nori.core.cfg['report_emails_from'],
             nori.core.cfg['report_emails_to'],
@@ -809,7 +1119,7 @@ def drupal_db_query(db_obj=None, mode='read', key_cv=[], value_cv=[],
                       supported
                     * therefore, the data type is optional and ignored
                     * however, remember that the overall key_cv entry
-                      must be a tuple: (('relation, relation_type), )
+                      must be a tuple: (('relation', relation_type), )
               * for fields: ('field', field_name)
               * for title fields (in case the title of a node is also a
                 'value' entry that must be changed): ('title',)
@@ -1703,7 +2013,7 @@ def run_mode_hook():
                          sourcedb_change_callback_args,
                          destdb_change_callback,
                          destdb_change_callback_args
-        globals: diff_list, sourcedb, destdb
+        globals: diff_dict, sourcedb, destdb
         functions: generic_db_query(), drupal_db_query(), key_filter(),
                    key_value_copy(), log_diff(), update_diff(),
                    do_diff_report(), (functions in templates), (global
