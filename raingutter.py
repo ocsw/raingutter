@@ -1532,6 +1532,8 @@ def log_diff(template_index, exists_in_source, source_row, exists_in_dest,
     Note that 'source' and 'dest' refer to the actual source and
     destination databases, after applying the value of the 'reverse'
     setting.
+    Returns a tuple: (the key used in diff_dict, the index added to
+                      the list).
     Parameters:
         template_index: the index of the relevant template in the
                         templates setting
@@ -1554,6 +1556,8 @@ def log_diff(template_index, exists_in_source, source_row, exists_in_dest,
             diff_dict[template_index] = []
         diff_dict[template_index].append((exists_in_source, source_row,
                                           exists_in_dest, dest_row, False))
+        diff_k = template_index
+        diff_i = len(diff_dict[template_index]) - 1
     elif nori.core.cfg['report_order'] == 'keys':
         keys_str = ''
         if source_row is not None:
@@ -1569,6 +1573,8 @@ def log_diff(template_index, exists_in_source, source_row, exists_in_dest,
         diff_dict[keys_str].append((template_index, exists_in_source,
                                     source_row, exists_in_dest, dest_row,
                                     False))
+        diff_k = keys_str
+        diff_i = len(diff_dict[keys_str]) - 1
     nori.core.status_logger.info(
         'Diff found for template {0} ({1}):\nS: {2}\nD: {3}' .
         format(template_index,
@@ -1578,6 +1584,27 @@ def log_diff(template_index, exists_in_source, source_row, exists_in_dest,
                nori.pps(dest_row) if exists_in_dest
                                   else '[no match in destination database]')
     )
+    return (diff_k, diff_i)
+
+
+def update_diff(diff_k, diff_i):
+    """
+    Mark a diff as updated.
+    Parameters:
+        diff_k: the key used in diff_dict
+        diff_i: the index in the list
+    Dependencies:
+        config settings: report_order
+        globals: diff_dict
+        modules: nori
+    """
+    diff_t = diff_dict[diff_k][diff_i]
+    if nori.core.cfg['report_order'] == 'template':
+        diff_dict[diff_k][diff_i] = ((diff_t[0], diff_t[1], diff_t[2],
+                                      diff_t[3], True))
+    elif nori.core.cfg['report_order'] == 'keys':
+        diff_dict[diff_k][diff_i] = ((diff_t[0], diff_t[1], diff_t[2],
+                                      diff_t[3], diff_t[4], True))
 
 
 def render_diff_report():
