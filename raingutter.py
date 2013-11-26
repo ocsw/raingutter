@@ -298,6 +298,8 @@ nori.core.config_settings['template_list'] = dict(
     descr=(
 '''
 The list of templates; see template_mode.
+
+Ignored if template_mode is 'all'.
 '''
     ),
     default=[],
@@ -338,6 +340,8 @@ nori.core.config_settings['key_list'] = dict(
 The list of keys; see key_mode.
 
 Entries may be tuples in the case of multi-valued keys.
+
+Ignored if key_mode is 'all'.
 '''
     ),
     default=[],
@@ -347,7 +351,7 @@ Entries may be tuples in the case of multi-valued keys.
 nori.core.config_settings['sourcedb_change_callback'] = dict(
     descr=(
 '''
-Function to call if the source database was changed.
+Function to call if the source database was changed, or None.
 
 This is separate from the per-template functions (see above), and is
 intended for overall cleanup.  In particular, it is useful for clearing
@@ -365,6 +369,11 @@ nori.core.config_settings['sourcedb_change_callback_args'] = dict(
 The arguments for the source-DB change callback.
 
 Must be a tuple of (*args, **kwargs).
+
+The first argument supplied to the function (before *args) will be the
+database handle.
+
+Ignored if source_db_change_callback is None.
 '''
     ),
     default=([], {}),
@@ -373,7 +382,7 @@ Must be a tuple of (*args, **kwargs).
 nori.core.config_settings['destdb_change_callback'] = dict(
     descr=(
 '''
-Function to call if the destination database was changed.
+Function to call if the destination database was changed, or None.
 
 This is separate from the per-template functions (see above), and is
 intended for overall cleanup.  In particular, it is useful for clearing
@@ -391,6 +400,11 @@ nori.core.config_settings['destdb_change_callback_args'] = dict(
 The arguments for the destination-DB change callback.
 
 Must be a tuple of (*args, **kwargs).
+
+The first argument supplied to the function (before *args) will be the
+database handle.
+
+Ignored if source_db_change_callback is None.
 '''
     ),
     default=([], {}),
