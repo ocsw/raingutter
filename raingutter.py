@@ -978,7 +978,7 @@ WHERE (node.vid IN
 AND node.type = %s
 {4}
 {5}
-AND f.deleted = 0
+AND (f.deleted = 0 OR f.deleted IS NULL)
 ORDER BY node.title, f.delta
 '''.format(key_column, value_column, field_name, term_join, node_value_cond,
            field_value_cond)
@@ -1079,9 +1079,9 @@ AND (e1.revision_id IN
 AND e1.entity_type = 'relation'
 AND e1.bundle = %s
 AND e1.endpoints_entity_type = 'node'
-AND e1.deleted = 0
+AND (e1.deleted = 0 OR e1.deleted IS NULL)
 AND e2.endpoints_entity_type = 'node'
-AND e2.deleted = 0
+AND (e2.deleted = 0 OR e2.deleted IS NULL)
 AND (v_node.vid IN
      (SELECT max(vid)
       FROM node
@@ -1211,9 +1211,9 @@ AND (e1.revision_id IN
 AND e1.entity_type = 'relation'
 AND e1.bundle = %s
 AND e1.endpoints_entity_type = 'node'
-AND e1.deleted = 0
+AND (e1.deleted = 0 OR e1.deleted IS NULL)
 AND e2.endpoints_entity_type = 'node'
-AND e2.deleted = 0
+AND (e2.deleted = 0 OR e2.deleted IS NULL)
 AND (node2.vid IN
      (SELECT max(vid)
       FROM node
@@ -1221,7 +1221,7 @@ AND (node2.vid IN
 AND node2.type = %s
 {5}
 AND f.entity_type = 'relation'
-AND f.deleted = 0
+AND (f.deleted = 0 OR f.deleted IS NULL)
 {6}
 ORDER BY k_node.title, e1.entity_id, f.delta
 '''.format(key_column_1, key_column_2, value_column, field_name,
@@ -1333,15 +1333,15 @@ WHERE (node.vid IN
 AND node.type = %s
 {5}
 AND fcf.entity_type = 'node'
-AND fcf.deleted = 0
+AND (fcf.deleted = 0 OR fcf.deleted IS NULL)
 AND (fci.revision_id IN
      (SELECT max(revision_id)
       FROM field_collection_item
       GROUP BY item_id))
-AND fci.archived = 0
+AND (fci.archived = 0 OR fci.archived IS NULL)
 {6}
 AND f.entity_type = 'field_collection_item'
-AND f.deleted = 0
+AND (f.deleted = 0 OR f.deleted IS NULL)
 {7}
 ORDER BY node.title, fcf.delta, f.delta
 '''.format(key_column,
