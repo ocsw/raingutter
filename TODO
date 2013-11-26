@@ -15,6 +15,7 @@ nori import
 drupal read:
     add node -> title, fc -> label, etc.
     inner joins for relations, etc?
+    OR IS NULL cases
 
 ---
 
