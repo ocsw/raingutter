@@ -28,6 +28,7 @@ import collections
 import socket
 import logging
 import logging.handlers
+import copy
 
 
 #########
@@ -247,9 +248,9 @@ that they both output the data in the same format.  This format must also
 match the keys specified in the per-template and global key lists.
 
 The change callback functions must be either None, or else functions to call
-if this template has caused any changes in the database.  This is
-particularly important for emulating computed fields in a Drupal database.
-Change callbacks must accept the following:
+if this template has caused any changes in the database for a given row.
+This is particularly important for emulating computed fields in a Drupal
+database.  Change callbacks must accept the following:
     template: the complete template entry for this data
     row: a single row from the results returned by the query function (see
          above)
@@ -1377,7 +1378,6 @@ def drupal_db_update(db_obj=None, key_cv=[], value_cv=[],
     Dependencies:
 
     """
-
     pass
 
 
@@ -1479,16 +1479,16 @@ def key_value_copy(source_row, dest_key_cv, dest_value_cv):
     """
     new_dest_key_cv = []
     new_dest_value_cv = []
-    num_keys = len(key_cv)
+    num_keys = len(dest_key_cv)
     for i, row_val in enumerate(source_row):
         if i < num_keys:
             new_dest_key_cv.append(
-                dest_key_cv[i][0], dest_key_cv[i][1], row_val
+                (dest_key_cv[i][0], dest_key_cv[i][1], row_val)
             )
         else:
             new_dest_value_cv.append(
-                dest_value_cv[i - num_keys][0],
-                dest_value_cv[i - num_keys][1], row_val
+                (dest_value_cv[i - num_keys][0],
+                 dest_value_cv[i - num_keys][1], row_val)
             )
     return (new_dest_key_cv, new_dest_value_cv)
 
@@ -1589,7 +1589,6 @@ def render_diff_report():
                 )
             diff_report += '\n'
     elif nori.core.cfg['report_order'] == 'keys':
-        print(diff_dict)
         for key_str in diff_dict:
             section_header = ('Key string {0}:' .
                               format(nori.pps(key_str)))
@@ -1647,9 +1646,9 @@ def run_mode_hook():
                          template_list
         globals: diff_list, sourcedb, destdb
         functions: generic_db_query(), drupal_db_query(), key_filter(),
-                   log_diff(), do_diff_report(), (functions in
-                   templates)
-        modules: nori
+                   key_value_copy(), log_diff(), do_diff_report(),
+                   (functions in templates)
+        modules: copy, nori
         Python: 2.0/3.2, for callable()
     """
 
@@ -1727,7 +1726,27 @@ def run_mode_hook():
             # script to exit before this, as currently written
             break
 
-        # diff and check for missing rows in the destination DB
+        # encapsulate the sync so this is less messy to read
+        def do_sync():
+            """Actually sync data to the destination database."""
+            new_key_cv, new_value_cv = key_value_copy(
+                s_row, dest_kwargs['key_cv'], dest_kwargs['value_cv']
+            )
+            new_dest_kwargs = copy.copy(dest_kwargs)
+            new_dest_kwargs['key_cv'] = new_key_cv
+            new_dest_kwargs['value_cv'] = new_value_cv
+
+            nori.core.status_logger.info('Updating destination database...')
+            ret = dest_func(*dest_args, db_obj=destdb, mode='update',
+                            **new_dest_kwargs)
+            if ret:
+#TODO update diff_dict
+                nori.core.status_logger.info('Update complete.')
+            # DB code will handle errors
+
+            return ret
+
+        # diff/sync and check for missing rows in the destination DB
         for s_row in s_rows:
             # apply transform
             if to_dest_func and callable(to_dest_func):
@@ -1749,13 +1768,16 @@ def run_mode_hook():
                 if not key_filter(t_index, dest_kwargs['key_cv'], d_row):
                     continue
 
-                # the actual diff / row check
+                # the actual work
                 d_keys = d_row[0:len(dest_kwargs['key_cv'])]
                 d_vals = d_row[len(dest_kwargs['key_cv']):]
                 if d_keys == s_keys:
                     found = True
+                    print(s_row)
                     if d_vals != s_vals:
                         log_diff(t_index, True, s_row, True, d_row)
+                        if nori.core.cfg['action'] == 'sync':
+                            do_sync()
                     break
 
             # row not found
@@ -1782,7 +1804,8 @@ def run_mode_hook():
                         s_row = to_dest_func(template, s_row)
 
                     # filter by keys
-                    if not key_filter(t_index, source_kwargs['key_cv'], s_row):
+                    if not key_filter(t_index, source_kwargs['key_cv'],
+                                      s_row):
                         continue
 
                     # the actual row check
@@ -1797,11 +1820,25 @@ def run_mode_hook():
                     log_diff(t_index, False, None, True, d_row)
 
 ###TODO: multiples
-            #change, incl. action check
-            #template callbacks
-    #overall callbacks
 
-    do_diff_report()
+###TODO: callbacks - in do_sync?
+        # template-level change callback
+        if dest_change_func and callable(dest_change_func) and:
+            nori.core.status_logger.info(
+                'Calling change callback for this template...'
+            )
+            nori.core.status_logger.info(
+                'Callback complete.'
+            )
+
+        #
+        # end template loop
+        #
+
+###TODO: #overall callbacks
+
+    if diff_dict:
+        do_diff_report()
 
     destdb.close()
     sourcedb.close()
