@@ -24,6 +24,10 @@ from pprint import pprint as pp  # for debugging
 
 import sys
 import operator
+import collections
+import socket
+import logging
+import logging.handlers
 
 
 #########
@@ -73,14 +77,15 @@ NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
 EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 '''
 
-# store the diffs in one of two ways:
-# * a list of diff tuples in the format:
-#   (template_index, exists_in_source, source_row, exists_in_dest,
-#    dest_row, has_been_changed)
-# * an ordered dict with keys which are rendered database key strings
-#   and values which are lists of tuples as above
-# see the report_order config setting
-diff_list = []
+# store the diffs in an ordered dict
+# format is one of:
+#     * rendered database 'key' strings ->
+#       lists of tuples in the format (template_index, exists_in_source,
+#       source_row, exists_in_dest, dest_row, has_been_changed)
+#     * indexes into the templates config setting ->
+#       lists of tuples in the format (exists_in_source, source_row,
+#       exists_in_dest, dest_row, has_been_changed)
+# depending on the report_order config setting
 diff_dict = collections.OrderedDict()
 
 
@@ -90,6 +95,9 @@ diff_dict = collections.OrderedDict()
 
 sourcedb = nori.MySQL('sourcedb')
 destdb = nori.MySQL('destdb')
+
+# see init_reporting()
+email_reporter = None
 
 
 #########################
@@ -385,6 +393,116 @@ database keys ('keys')?
     cl_coercer=str,
 )
 
+nori.core.config_settings['send_report_emails'] = dict(
+    descr=(
+'''
+Send reports on diffs / syncs by email?  (True/False)
+'''
+    ),
+    default=True,
+    cl_coercer=nori.str_to_bool,
+)
+
+nori.core.config_settings['report_emails_from'] = dict(
+    descr=(
+'''
+Address to send report emails from.
+
+Ignored if send_report_emails is False.
+'''
+    ),
+    default=nori.core.running_as_email,
+    default_descr=(
+'''
+the local email address of the user running the script
+(i.e., [user]@[hostname], where [user] is the current user and [hostname]
+is the local hostname)
+'''
+    ),
+    cl_coercer=str,
+)
+
+nori.core.config_settings['report_emails_to'] = dict(
+    descr=(
+'''
+Where to send report emails.
+
+This must be a list of strings (even if there is only one address).
+
+Ignored if send_report_emails is False.
+'''
+    ),
+    default=[nori.core.running_as_email],
+    default_descr=(
+'''
+a list containing the local email address of the user running
+the script (i.e., [user]@[hostname], where [user] is the current user
+and [hostname] is the local hostname)
+'''
+    ),
+    cl_coercer=lambda x: x.split(','),
+)
+
+nori.core.config_settings['report_emails_subject'] = dict(
+    descr=(
+'''
+The subject line of the report emails.
+
+Ignored if send_report_emails is False.
+'''
+    ),
+    default=(nori.core.script_shortname + ' report on ' + socket.getfqdn()),
+    default_descr=(
+'''
+'{0} report on [hostname]', where [hostname] is the local
+hostname
+'''.format(nori.core.script_shortname)
+    ),
+    cl_coercer=str,
+)
+
+nori.core.config_settings['report_emails_host'] = dict(
+    descr=(
+'''
+The SMTP server via which report emails will be sent.
+
+This can be a string containing the hostname, or a tuple of the
+hostname and the port number.
+
+Ignored if send_report_emails is False.
+'''
+    ),
+    default='localhost',
+)
+
+nori.core.config_settings['report_emails_cred'] = dict(
+    descr=(
+'''
+The credentials to be used with the report_emails_host.
+
+This can be None or a tuple containing the username and password.
+
+Ignored if send_report_emails is False.
+'''
+    ),
+    default=None,
+)
+
+nori.core.config_settings['report_emails_sec'] = dict(
+    descr=(
+'''
+The SSL/TLS options to be used with the report_emails_host.
+
+This can be None, () for plain SSL/TLS, a tuple containing only
+the path to a key file, or a tuple containing the paths to the key
+and certificate files.
+
+Ignored if send_report_emails is False.
+'''
+    ),
+    default=None,
+)
+
 
 ########################################################################
 #                              FUNCTIONS
@@ -392,6 +510,32 @@ database keys ('keys')?
 
 def validate_config():
     pass
+
+
+def init_reporting():
+    """
+    Dependencies:
+        config settings: send_report_emails, report_emails_host,
+                         report_emails_from, report_emails_to,
+                         report_emails_subject, report_emails_cred,
+                         report_emails_sec
+        globals: email_reporter
+        modules: logging, logging.handlers, nori
+    """
+    global email_reporter
+    if nori.core.cfg['send_report_emails']:
+        email_reporter = logging.getLogger(__name__ + '.reportemail')
+        email_reporter.propagate = False
+        email_handler = nori.SMTPDiagHandler(
+            nori.core.cfg['report_emails_host'],
+            nori.core.cfg['report_emails_from'],
+            nori.core.cfg['report_emails_to'],
+            nori.core.cfg['report_emails_subject'],
+            nori.core.cfg['report_emails_cred'],
+            nori.core.cfg['report_emails_sec']
+        )
+        email_reporter.addHandler(email_handler)
+    # use the output logger for the report files (for now)
 
 
 def generic_db_query(db_obj=None, mode='read', tables='', key_cv=[],
@@ -1264,7 +1408,7 @@ def key_filter(template_index, key_cv, row):
     """
 
     if (nori.core.cfg['key_mode'] == 'all' and
-          nori.core.cfg['templates'][template_index][12] == 'all')
+          nori.core.cfg['templates'][template_index][12] == 'all'):
         return True
 
     if nori.core.cfg['key_mode'] == 'all':
@@ -1273,13 +1417,16 @@ def key_filter(template_index, key_cv, row):
         num_keys = len(key_cv)
         found = False
         for k_match in nori.core.cfg['key_list']:
+            k_match = nori.scalar_to_tuple(k_match)
             if len(k_match) > num_keys:
                 return False  # shouldn't happen if the configs are sane
             for i, match_val in enumerate(k_match):
                 if row[i] != match_val:
                     break
-            found = True
-            break
+                if i == len(k_match) - 1:
+                    found = True
+            if found:
+                break
         if nori.core.cfg['key_mode'] == 'include':
             if found:
                 g_action = 1
@@ -1297,13 +1444,16 @@ def key_filter(template_index, key_cv, row):
         num_keys = len(key_cv)
         found = False
         for k_match in nori.core.cfg['templates'][template_index][13]:
+            k_match = nori.scalar_to_tuple(k_match)
             if len(k_match) > num_keys:
                 return False  # shouldn't happen if the configs are sane
             for i, match_val in enumerate(k_match):
                 if row[i] != match_val:
                     break
-            found = True
-            break
+                if i == len(k_match) - 1:
+                    found = True
+            if found:
+                break
         if nori.core.cfg['templates'][template_index][12] == 'include':
             if found:
                 t_action = 1
@@ -1315,7 +1465,8 @@ def key_filter(template_index, key_cv, row):
             else:
                 t_action = 1
 
-    if g_action + t_action = 2:
+    print(row, g_action, t_action)
+    if g_action + t_action == 2:
         return True
     return False
 
@@ -1339,21 +1490,126 @@ def log_diff(template_index, exists_in_source, source_row, exists_in_dest,
         dest_row: the relevant results row from the destination DB's
                   query function
     Dependencies:
-        config settings: templates
-        globals: diff_list
+        config settings: templates, report_order
+        globals: diff_dict
         modules: nori
     """
-    diff_list.append((template_index, exists_in_source, source_row,
-                      exists_in_dest, dest_row, False))
+    template = nori.core.cfg['templates'][template_index]
+    if nori.core.cfg['report_order'] == 'template':
+        if template_index not in diff_dict:
+            diff_dict[template_index] = []
+        diff_dict[template_index].append((exists_in_source, source_row,
+                                          exists_in_dest, dest_row, False))
+    elif nori.core.cfg['report_order'] == 'keys':
+        keys_str = ''
+        if source_row is not None:
+            num_keys = len(template[4][1]['key_cv'])
+            for k in source_row[0:num_keys]:
+                keys_str += str(k)
+        elif dest_row is not None:
+            num_keys = len(template[9][1]['key_cv'])
+            for k in dest_row[0:num_keys]:
+                keys_str += str(k)
+        if keys_str not in diff_dict:
+            diff_dict[keys_str] = []
+        diff_dict[keys_str].append((template_index, exists_in_source,
+                                    source_row, exists_in_dest, dest_row,
+                                    False))
     nori.core.status_logger.info(
-        'Diff found for template {0} ({1}):\n{2}\n{3}' .
+        'Diff found for template {0} ({1}):\nS: {2}\nD: {3}' .
         format(template_index,
-               nori.pps(nori.core.cfg['templates'][template_index][0]),
+               nori.pps(template[0]),
                nori.pps(source_row) if exists_in_source
                                     else '[no match in source database]',
                nori.pps(dest_row) if exists_in_dest
                                   else '[no match in destination database]')
     )
+
+
+def render_diff_report():
+    """
+    Render a summary of the diffs found and/or changed.
+    Returns a string.
+    Dependencies:
+        config settings: action, templates, report_order
+        globals: diff_dict
+        modules: nori
+    """
+    if nori.core.cfg['action'] == 'diff':
+        diff_report = ' Diff Report '
+    elif nori.core.cfg['action'] == 'sync':
+        diff_report = ' Diff / Sync Report '
+    diff_report = ('#' * len(diff_report) + '\n' +
+                   diff_report + '\n' +
+                   '#' * len(diff_report) + '\n\n')
+    if nori.core.cfg['report_order'] == 'template':
+        for template_index in diff_dict:
+            template = nori.core.cfg['templates'][template_index]
+            section_header = ('Template {0} ({1}):' .
+                              format(template_index, nori.pps(template[0])))
+            section_header += '\n' + ('-' * len(section_header)) + '\n\n'
+            diff_report += section_header
+            for diff_t in diff_dict[template_index]:
+                exists_in_source = diff_t[0]
+                source_row = diff_t[1]
+                exists_in_dest = diff_t[2]
+                dest_row = diff_t[3]
+                has_been_changed = diff_t[4]
+                diff_report += (
+                    'Source: {0}\nDest: {1}\nStatus: {2}changed\n\n' .
+                    format(nori.pps(source_row)
+                               if exists_in_source
+                               else '[no match in source database]',
+                           nori.pps(dest_row)
+                               if exists_in_dest
+                               else '[no match in destination database]',
+                           'un' if not has_been_changed else '')
+                )
+            diff_report += '\n'
+    elif nori.core.cfg['report_order'] == 'keys':
+        print(diff_dict)
+        for key_str in diff_dict:
+            section_header = ('Key string {0}:' .
+                              format(nori.pps(key_str)))
+            section_header += '\n' + ('-' * len(section_header)) + '\n\n'
+            diff_report += section_header
+            for diff_t in diff_dict[key_str]:
+                template_index = diff_t[0]
+                exists_in_source = diff_t[1]
+                source_row = diff_t[2]
+                exists_in_dest = diff_t[3]
+                dest_row = diff_t[4]
+                has_been_changed = diff_t[5]
+                template = nori.core.cfg['templates'][template_index]
+                num_keys = len(template[4][1]['key_cv'])
+                diff_report += (
+                    'Template:{0}\nSource: {1}\nDest: {2}\n'
+                    'Status: {3}changed\n\n' .
+                    format(template[0],
+                           nori.pps(source_row[num_keys:])
+                               if exists_in_source
+                               else '[no match in source database]',
+                           nori.pps(dest_row[num_keys:])
+                               if exists_in_dest
+                               else '[no match in destination database]',
+                           'un' if not has_been_changed else '')
+                )
+            diff_report += '\n'
+    return diff_report.strip()
+
+
+def do_diff_report():
+    """
+    Email and log a summary of the diffs found and/or changed.
+    Dependencies:
+        globals: email_reporter
+        functions: render_diff_report()
+    """
+    diff_report = render_diff_report()
+    if email_reporter:
+        email_reporter.error(diff_report + '\n\n\n' + ('#' * 76))
+    # use the output logger for the report files (for now)
+    nori.core.output_logger.info('\n\n' + diff_report + '\n\n')
 
 
 def clear_drupal_cache():
@@ -1369,7 +1625,8 @@ def run_mode_hook():
                          template_list
         globals: diff_list, sourcedb, destdb
         functions: generic_db_query(), drupal_db_query(), key_filter(),
-                   log_diff(), (functions in templates)
+                   log_diff(), do_diff_report(), (functions in
+                   templates)
         modules: nori
         Python: 2.0/3.2, for callable()
     """
@@ -1490,7 +1747,7 @@ def run_mode_hook():
                 d_row = to_source_func(template, d_row)
 
             # filter by keys
-            if not key_filter(t_index, _kwargs['key_cv'], d_row):
+            if not key_filter(t_index, dest_kwargs['key_cv'], d_row):
                 continue
 
             found = False
@@ -1517,11 +1774,11 @@ def run_mode_hook():
                 log_diff(t_index, False, None, True, d_row)
 
 ###TODO: multiples
-            #change, incl. callbacks
-    #overall change callbacks
-    #report
+            #change, incl. action check
+            #template callbacks
+    #overall callbacks
 
-    
+    do_diff_report()
 
     destdb.close()
     sourcedb.close()
@@ -1533,6 +1790,7 @@ def run_mode_hook():
 
 def main():
     nori.core.validate_config_hooks.append(validate_config)
+    nori.core.process_config_hooks.append(init_reporting)
     nori.core.run_mode_hooks.append(run_mode_hook)
     nori.process_command_line()
 
