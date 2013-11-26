@@ -1415,6 +1415,24 @@ def delete_drupal_rel():
     pass
 
 
+def clear_drupal_cache(db_obj):
+    """
+    Clear all caches in a Drupal database.
+    Parameters:
+        db_obj: the database object to use
+    """
+    ret = db_obj.get_table_list(None)
+    if not ret[0]:
+        return False
+    for table in ret[1]:
+        if table[0].startswith('cache'):
+            ret = db_obj.execute(None, 'DELETE FROM {0};'.format(table[0]))
+            print(ret)
+            if not ret:
+                return False
+    return True
+
+
 def key_filter(template_index, key_cv, row):
 
     """
