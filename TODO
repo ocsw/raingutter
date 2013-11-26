@@ -1,14 +1,12 @@
 TODO
 
-main loop
+multiples
 updates
 validate configs - incl. drupal chains, incl. key list length
 configs for OCS fields
 testing
 
 email handler - 'alert' vs....
-
-output log order bug(s)
 
 nori import
 
@@ -17,16 +15,25 @@ drupal read:
     inner joins for relations, etc?
     OR IS NULL cases
 
+refs to rg funcs from config
+
 ---
 
+redundant output log messages?
+
 db/ssh conn msgs: identifiers
+
+postgres table list
+
 no_replicate for updates
     SET sql_log_bin=0;
     SET sql_log_bin=1;
-    but - check/store 
+    but - check/store
+
 more examples/sql, esp for drupal
 
 ---
 
 docstring / USAGE
+
 error handling: exit/skip?
