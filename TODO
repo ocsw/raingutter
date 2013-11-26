@@ -1,19 +1,20 @@
 TODO
 
-	main loop
-	updates
-	validate configs
-	configs for OCS fields
-	testing
+main loop
+updates
+validate configs - incl. drupal chains, incl. key list length
+configs for OCS fields
+testing
 
-key list - to templates, or both
+email handler - 'alert' vs....
+
+output log order bug(s)
 
 nori import
+
 drupal read:
     add node -> title, fc -> label, etc.
     inner joins for relations, etc?
-if not in source?  if not in dest?
-validate config - incl. drupal chains
 
 ---
 
