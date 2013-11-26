@@ -1464,6 +1464,35 @@ def key_filter(template_index, key_cv, row):
     return True
 
 
+def key_value_copy(source_row, dest_key_cv, dest_value_cv):
+    """
+    Transfer the values from a source DB row to the dest DB k/v seqs.
+    The row and the (key_cv + value_cv) must be the same length.
+    Returns a tuple of (key_cv, value_cv).
+    Parameters:
+        source_row: a row of 'key' and 'value' values from the source DB
+                    query function
+        dest_key_cv: the key cv sequence from the template for the
+                     destination database
+        dest_value_cv: the value cv sequence from the template for the
+                       destination database
+    """
+    new_dest_key_cv = []
+    new_dest_value_cv = []
+    num_keys = len(key_cv)
+    for i, row_val in enumerate(source_row):
+        if i < num_keys:
+            new_dest_key_cv.append(
+                dest_key_cv[i][0], dest_key_cv[i][1], row_val
+            )
+        else:
+            new_dest_value_cv.append(
+                dest_value_cv[i - num_keys][0],
+                dest_value_cv[i - num_keys][1], row_val
+            )
+    return (new_dest_key_cv, new_dest_value_cv)
+
+
 def log_diff(template_index, exists_in_source, source_row, exists_in_dest,
              dest_row):
     """
