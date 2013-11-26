@@ -1692,27 +1692,25 @@ def do_diff_report():
     nori.core.output_logger.info('\n\n' + diff_report + '\n\n')
 
 
-def clear_drupal_cache():
-    pass
-
-
 def run_mode_hook():
 
     """
     Do the actual work.
     Dependencies:
-        config settings: reverse, templates, template_mode,
-                         template_list
+        config settings: action, reverse, bidir, templates,
+                         template_mode, template_list,
+                         sourcedb_change_callback,
+                         sourcedb_change_callback_args,
+                         destdb_change_callback,
+                         destdb_change_callback_args
         globals: diff_list, sourcedb, destdb
         functions: generic_db_query(), drupal_db_query(), key_filter(),
-                   key_value_copy(), log_diff(), do_diff_report(),
-                   (functions in templates)
+                   key_value_copy(), log_diff(), update_diff(),
+                   do_diff_report(), (functions in templates), (global
+                   callback functions)
         modules: copy, nori
         Python: 2.0/3.2, for callable()
     """
-
-    sourcedb.connect()
-    destdb.connect()
 
     for t_index, template in enumerate(nori.core.cfg['templates']):
         # note: 'source'/'s_' and 'dest'/'d_' below refer to the
@@ -1733,6 +1731,8 @@ def run_mode_hook():
             dest_kwargs = template[9][1]
             to_source_func = template[10]
             dest_change_func = template[11]
+            s_db = sourcedb
+            d_db = destdb
         else:
             source_type = template[7]
             source_func = template[8]
@@ -1746,8 +1746,17 @@ def run_mode_hook():
             dest_kwargs = template[4][1]
             to_source_func = template[5]
             dest_change_func = template[6]
+            s_db = destdb
+            d_db = sourcedb
         t_key_mode = template[12]
         t_key_list = template[13]
+        callback_needed = False
+
+        # connect to DBs
+        s_db.connect()
+        s_db.autocommit(True)
+        d_db.connect()
+        d_db.autocommit(True)
 
         # filter by template
         if (nori.cfg['template_mode'] == 'include' and
@@ -1770,7 +1779,7 @@ def run_mode_hook():
                 dest_func = drupal_db_query
 
         # get the source data
-        s_rows = source_func(*source_args, db_obj=sourcedb, mode='read',
+        s_rows = source_func(*source_args, db_obj=s_db, mode='read',
                              **source_kwargs)
         if s_rows is None:
             # shouldn't actually happen; errors will cause the script to
@@ -1794,15 +1803,30 @@ def run_mode_hook():
             new_dest_kwargs = copy.copy(dest_kwargs)
             new_dest_kwargs['key_cv'] = new_key_cv
             new_dest_kwargs['value_cv'] = new_value_cv
-
             nori.core.status_logger.info('Updating destination database...')
             ret = dest_func(*dest_args, db_obj=destdb, mode='update',
                             **new_dest_kwargs)
+            ret = True
             if ret:
-#TODO update diff_dict
+                update_diff(diff_k, diff_i)
+                callback_needed = True
                 nori.core.status_logger.info('Update complete.')
             # DB code will handle errors
+            if not (dest_change_func and callable(dest_change_func)):
+                if not ret:
+                    nori.core.status_logger.info(
+                        'Updating destination database...'
+                    )
+                return ret
 
+            # template-level change callback
+            nori.core.status_logger.info(
+                'Calling change callback for this template...'
+            )
+            ret = dest_change_func(template, s_row)
+            nori.core.status_logger.info(
+                'Callback complete.' if ret else 'Callback failed.'
+            )
             return ret
 
         # diff/sync and check for missing rows in the destination DB
@@ -1832,9 +1856,9 @@ def run_mode_hook():
                 d_vals = d_row[len(dest_kwargs['key_cv']):]
                 if d_keys == s_keys:
                     found = True
-                    print(s_row)
                     if d_vals != s_vals:
-                        log_diff(t_index, True, s_row, True, d_row)
+                        diff_k, diff_i = log_diff(t_index, True, s_row,
+                                                  True, d_row)
                         if nori.core.cfg['action'] == 'sync':
                             do_sync()
                     break
@@ -1880,27 +1904,36 @@ def run_mode_hook():
 
 ###TODO: multiples
 
-###TODO: callbacks - in do_sync?
-        # template-level change callback
-        if dest_change_func and callable(dest_change_func) and:
-            nori.core.status_logger.info(
-                'Calling change callback for this template...'
-            )
-            nori.core.status_logger.info(
-                'Callback complete.'
-            )
-
         #
         # end template loop
         #
 
-###TODO: #overall callbacks
+    # global change callback
+    if callback_needed:
+        if not nori.core.cfg['reverse']:
+            cb = nori.core.cfg['destdb_change_callback']
+            if cb and callable(cb):
+                cb_arg_t = nori.core.cfg['destdb_change_callback_args']
+        else:
+            cb = nori.core.cfg['sourcedb_change_callback']
+            if cb and callable(cb):
+                cb_arg_t = nori.core.cfg['sourcedb_change_callback_args']
+        if cb and callable(cb):
+            nori.core.status_logger.info(
+                'Calling global change callback...'
+            )
+            ret = cb(d_db, *cb_arg_t[0], **cb_arg_t[1])
+            nori.core.status_logger.info(
+                'Callback complete.' if ret else 'Callback failed.'
+            )
 
+    # email/log report
     if diff_dict:
         do_diff_report()
 
-    destdb.close()
-    sourcedb.close()
+    # close DB connections
+    d_db.close()
+    s_db.close()
 
 
 ########################################################################
