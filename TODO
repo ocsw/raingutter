@@ -2,14 +2,19 @@ TODO
 
 multiples
 updates
-validate configs - incl. drupal chains, incl. key list length
+validate configs - incl. drupal chains
 configs for OCS fields
 testing
+
+key list length
+
+store chain_type?
 
 nori import
 
 drupal read:
     add node -> title, fc -> label, etc.
+    add multi-field/node? vs at least note re multi-value vs multi-column
     inner joins for relations, etc?
     OR IS NULL cases
 
@@ -33,6 +38,6 @@ more examples/sql, esp for drupal
 
 ---
 
-docstring / USAGE
+docstring / USAGE / mod notes re chains
 
 error handling: exit/skip?
