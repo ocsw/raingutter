@@ -542,7 +542,92 @@ Ignored if send_report_emails is False.
 #                              FUNCTIONS
 ########################################################################
 
-def _validate_drupal_chain(key_index, key_cv, value_index, value_cv):
+def validate_generic_chain(key_index, key_cv, value_index, value_cv):
+    """
+    Validate a generic key_cv/value_cv chain.
+    Parameters:
+        key_index: the index tuple of the key_cv dict in the
+                   templates setting
+        key_cv: the actual key_cv dict
+        value_index: the index tuple of the value_cv dict in the
+                     templates setting
+        value_cv: the actual value_cv dict
+    Dependencies:
+        config settings: templates
+        modules: nori
+    """
+    for index, cv in [(key_index, key_cv), (value_index, value_cv)]:
+        nori.setting_check_not_empty(index)
+        for i, col in enumerate(cv):
+            nori.setting_check_type(index + (i, ),
+                                    nori.core.CONTAINER_TYPES)
+            nori.setting_check_len(index + (i, ), 2, 3)
+            # column identifier
+            nori.setting_check_not_blank(index + (i, 0))
+            # data type
+            nori.setting_check_not_blank(index + (i, 1))
+
+
+def drupal_chain_type(key_cv=None, value_cv=None, key_entities=None,
+                      value_entities=None):
+
+    """
+    Identify the type of a Drupal key/value chain.
+
+    If the entities parameters are supplied, the cv parameters are
+    ignored.  At least one set of parameters must be supplied.
+
+    Parameters:
+        key_cv: the key_cv to examine, from the template
+        value_cv: the value_cv to examine, from the template
+        key_entities: a list of the identifier types from the key_cv
+                      (e.g. 'node')
+        value_entities: a list of the identifier types from the value_cv
+                        (e.g. 'field')
+
+    """
+
+    if key_entities is None:
+        key_entities = []
+        for i, cv in enumerate(key_cv):
+            key_entities.append(key_cv[i][0][0])
+    if value_entities is None:
+        value_entities = []
+        for i, cv in enumerate(value_cv):
+            value_entities.append(value_cv[i][0][0])
+
+    if (len(key_entities) == 1 and
+          key_entities[0] == 'node' and
+          len(value_entities) == 1 and
+          value_entities[0] == 'field'):
+        return 'n-f'
+
+    if (len(key_entities) == 2 and
+          key_entities[0] == 'node' and
+          key_entities[1] == 'relation' and
+          len(value_entities) == 1 and
+          value_entities[0] == 'node'):
+        return 'n-r-n'
+
+    if (len(key_entities) == 3 and
+          key_entities[0] == 'node' and
+          key_entities[1] == 'relation' and
+          key_entities[2] == 'node' and
+          len(value_entities) == 1 and
+          value_entities[0] == 'field'):
+        return 'n-rn-rf'
+
+    if (len(key_entities) == 2 and
+          key_entities[0] == 'node' and
+          key_entities[1] == 'fc' and
+          len(value_entities) == 1 and
+          value_entities[0] == 'field'):
+        return 'n-fc-f'
+
+    return None
+
+
+def validate_drupal_chain(key_index, key_cv, value_index, value_cv):
 
     """
     Validate a Drupal key_cv/value_cv chain.
@@ -565,40 +650,24 @@ def _validate_drupal_chain(key_index, key_cv, value_index, value_cv):
     nori.setting_check_not_empty(key_index)
     key_entities = []
     for i, cv in enumerate(key_cv):
-        validate_drupal_cv(key_index + (i, ), cv[i])
+        validate_drupal_cv(key_index + (i, ), cv[i], 'k')
         key_entities.append(key_cv[i][0][0])
 
     # value_cv
     nori.setting_check_not_empty(value_index)
     value_entities = []
     for i, cv in enumerate(value_cv):
-        validate_drupal_cv(value_index + (i, ), cv[i])
+        validate_drupal_cv(value_index + (i, ), cv[i], 'v')
         value_entities.append(value_cv[i][0][0])
 
-
-    
-###TODO
-'''
-field*S*?
-        node -> field (including term references)
-        node -> relation -> node(s)
-        node -> relation & node(s) -> relation_field (incl. term refs)
-        node -> fc -> field (including term references)
-
-        * each step in the chains listed above is a tuple inside one of
-          these sequences; the last step goes in value_cv, the rest in
-          key_cv
-        * the first identifier in key_cv must be a node
-        * values_cv may not contain field collections or relations (yet)
-          and may only contain nodes if the last tuple in key_cv is a
-          relation
-        * there may be multiple identifiers in values_cv only if they
-          all refer to items which are in the same container (i.e.,
-          node, field collection, or relation)
-'''
+    if not drupal_chain_type(None, None, key_entities, value_entities):
+        nori.err_exit('Error: the key_cv / value_cv chain in {0} is not\n'
+                      'one of the currently allowed types; exiting.' .
+                      format(nori.setting_walk(key_index[0:-1])[2]),
+                      nori.core.exitvals['startup']['num'])
 
 
-def _validate_drupal_cv(cv_index, cv):
+def validate_drupal_cv(cv_index, cv, kv):
 
     """
     Validate a single Drupal key_cv/value_cv entry.
@@ -606,6 +675,8 @@ def _validate_drupal_cv(cv_index, cv):
     Parameters:
         cv_index: the index tuple of the entry in the templates setting
         cv: the entry itself
+        kv: 'k' if this is entry is part of a key_cv sequence, or 'v' if
+            it's part of a value_cv sequence
 
     Dependencies:
         config settings: templates
@@ -629,7 +700,16 @@ def _validate_drupal_cv(cv_index, cv):
 
     if ident[0] == 'node':
         nori.setting_check_len(ident_index, 3, 3)
-###TODO        nori.setting_check_type(ident_index + (1, ), nori.core.STRING_TYPES + (nori.core.NONE_TYPE, ))
+        if kv == 'k':
+            nori.setting_check_type(
+                ident_index + (1, ),
+                nori.core.STRING_TYPES
+            )
+        else:
+            nori.setting_check_type(
+                ident_index + (1, ),
+                nori.core.STRING_TYPES + (nori.core.NONE_TYPE, )
+            )
         nori.setting_check_list(ident_index + (2, ), ['id', 'title'])
     elif ident[0] == 'fc':
         nori.setting_check_len(ident_index, 3, 3)
@@ -648,21 +728,6 @@ def _validate_drupal_cv(cv_index, cv):
 
     if ident[0] != 'relation':
         nori.setting_check_not_blank(data_type_index)
-
-###TODO
-'''
-!!!!!
-              * for nodes: ('node', content_type, ID_type)
-                    * content_type is required for 'key' data, but
-                      optional for 'value' data; specify None to omit it
-                      in the latter case
-
-The entries in the key list will be compared with the key columns of each
-data row beginning at the first column.  It is an error for a row to have
-fewer key columns than are in the key list, but if a row has more key
-columns, columns which have no corresponding entry in the key list will be
-ignored for purposes of the comparison.
-'''
 
 
 def validate_config():
@@ -767,38 +832,28 @@ def validate_config():
             nori.setting_check_not_empty(('templates', i, 13))
 
         # templates: query-function arguments
+        s_db_type = nori.core.cfg['templates'][i][2]
         s_key_ind = ('templates', i, 4, 1, 'key_cv')
         s_key_cv = nori.core.cfg['templates'][i][4][1]['key_cv']
         s_value_ind = ('templates', i, 4, 1, 'value_cv')
         s_value_cv = nori.core.cfg['templates'][i][4][1]['value_cv']
-        s_db_type = nori.core.cfg['templates'][i][2]
+        if s_db_type == 'generic':
+            validate_generic_chain(s_key_ind, s_key_cv, s_value_ind,
+                                   s_value_cv)
+        elif s_db_type == 'drupal':
+            validate_drupal_chain(s_key_ind, s_key_cv, s_value_ind,
+                                  s_value_cv)
+        d_db_type = nori.core.cfg['templates'][i][7]
         d_key_ind = ('templates', i, 9, 1, 'key_cv')
         d_key_cv = nori.core.cfg['templates'][i][9][1]['key_cv']
         d_value_ind = ('templates', i, 9, 1, 'value_cv')
         d_value_cv = nori.core.cfg['templates'][i][9][1]['value_cv']
-        d_db_type = nori.core.cfg['templates'][i][7]
-        if db_type == 'generic':
-            for index, cv, db_type in [
-                    (s_key_ind, s_key_cv, s_db_type),
-                    (s_value_ind, s_value_cv, s_db_type),
-                    (d_key_ind, d_key_cv, d_db_type),
-                    (d_value_ind, d_value_cv, d_db_type),
-                   ]:
-                nori.setting_check_not_empty(index)
-                # cv tuples
-                for ci, col in enumerate(cv):
-                    nori.setting_check_type(index + (ci, ),
-                                            nori.core.CONTAINER_TYPES)
-                    nori.setting_check_len(index + (ci, ), 2, 3)
-                    # column identifier
-                    nori.setting_check_not_blank(index + (ci, 0))
-                    # data type
-                    nori.setting_check_not_blank(index + (ci, 1))
-        elif db_type == 'drupal':
-            _validate_drupal_chain(s_key_ind, s_key_cv, s_value_ind,
-                                   s_value_cv)
-            _validate_drupal_chain(d_key_ind, d_key_cv, d_value_ind,
+        if d_db_type == 'generic':
+            validate_generic_chain(d_key_ind, d_key_cv, d_value_ind,
                                    d_value_cv)
+        elif d_db_type == 'drupal':
+            validate_drupal_chain(d_key_ind, d_key_cv, d_value_ind,
+                                  d_value_cv)
 
     # reporting settings
     nori.setting_check_list('report_order', ['template', 'keys'])
