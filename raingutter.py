@@ -2162,20 +2162,20 @@ def run_mode_hook():
             nori.core.status_logger.info('Updating destination database...')
             ret = dest_func(*dest_args, db_obj=destdb, mode='update',
                             **new_dest_kwargs)
-            ret = True
             if ret:
                 update_diff(diff_k, diff_i)
                 callback_needed = True
                 nori.core.status_logger.info('Update complete.')
             # DB code will handle errors
             if not (dest_change_func and callable(dest_change_func)):
-                if not ret:
-                    nori.core.status_logger.info(
-                        'Updating destination database...'
-                    )
                 return ret
 
             # template-level change callback
+            if not ret:
+                nori.core.status_logger.info(
+                    'Skipping change callback for this template.'
+                )
+                return ret
             nori.core.status_logger.info(
                 'Calling change callback for this template...'
             )
