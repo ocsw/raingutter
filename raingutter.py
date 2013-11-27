@@ -1131,10 +1131,10 @@ def drupal_db_query(db_obj=None, mode='read', key_cv=[], value_cv=[],
           these sequences; the last step goes in value_cv, the rest in
           key_cv
         * the first identifier in key_cv must be a node
-        * values_cv may not contain field collections or relations (yet)
+        * value_cv may not contain field collections or relations (yet)
           and may only contain nodes if the last tuple in key_cv is a
           relation
-        * there may be multiple identifiers in values_cv only if they
+        * there may be multiple identifiers in value_cv only if they
           all refer to items which are in the same container (i.e.,
           node, field collection, or relation)
         * the tuples in key_cv and value_cv contain two or three
@@ -1246,6 +1246,11 @@ def drupal_db_read(db_obj=None, key_cv=[], value_cv=[]):
     """
     Do the actual work for generic Drupal DB reads.
 
+    Note: in some cases, extra columns will be returned (e.g. node type,
+    if the type wasn't specified in key_cv/value_cv).  These will
+    generally require post-processing in the transform function to match
+    the format of the opposite query function.
+
     Parameters:
         see generic_drupal_db_query()
 
@@ -1279,7 +1284,6 @@ Exiting.'''.format(*map(nori.pps, [db_obj, key_cv, value_cv]))
     if not ret[1]:
         return []
     return ret[1]
-###TODO: needs more massaging because of optional columns
 
 
 def get_drupal_db_read_query(key_cv=[], value_cv=[]):
@@ -2161,13 +2165,16 @@ def run_mode_hook():
 
         # encapsulate the sync so this is less messy to read
         def do_sync():
+
             """Actually sync data to the destination database."""
+
             new_key_cv, new_value_cv = key_value_copy(
                 s_row, dest_kwargs['key_cv'], dest_kwargs['value_cv']
             )
             new_dest_kwargs = copy.copy(dest_kwargs)
             new_dest_kwargs['key_cv'] = new_key_cv
             new_dest_kwargs['value_cv'] = new_value_cv
+
             nori.core.status_logger.info('Updating destination database...')
             ret = dest_func(*dest_args, db_obj=destdb, mode='update',
                             **new_dest_kwargs)
@@ -2267,10 +2274,8 @@ def run_mode_hook():
                 if not found:
                     log_diff(t_index, False, None, True, d_row)
 
-###TODO: multiples
-
         #
-        # end template loop
+        # end of template loop
         #
 
     # global change callback
