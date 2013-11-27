@@ -2,21 +2,19 @@ TODO
 
 multiples
 updates
-validate configs - incl. drupal chains
-configs for OCS fields
-testing
-
-key list length
-
-store chain_type?
-
-nori import
-
 drupal read:
     add node -> title, fc -> label, etc.
     add multi-field/node? vs at least note re multi-value vs multi-column
     inner joins for relations, etc?
     OR IS NULL cases
+configs for OCS fields
+testing
+
+key list length text, errors
+
+store chain_type?
+
+nori import
 
 refs to rg funcs from config
 
@@ -27,14 +25,14 @@ redundant output log messages?
 db/ssh conn msgs: identifiers
 
 postgres table list
-callable check
+callable setting check
 
 no_replicate for updates
     SET sql_log_bin=0;
     SET sql_log_bin=1;
     but - check/store
 
-more examples/sql, esp for drupal
+more examples/sql, esp for drupal?
 
 ---
 
