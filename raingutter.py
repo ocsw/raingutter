@@ -1294,16 +1294,16 @@ def get_drupal_db_read_query(key_cv=[], value_cv=[]):
     Parameters:
         see generic_drupal_db_query()
 
+    Dependencies:
+        functions: drupal_chain_type()
     """
+
+    chain_type = drupal_chain_type(key_cv, value_cv)
 
     #
     # node -> field (including term references)
     #
-    if (len(key_cv) == 1 and
-          key_cv[0][0][0] == 'node' and
-          len(value_cv) == 1 and
-          value_cv[0][0][0] == 'field'):
-
+    if chain_type == 'n-f':
         # node details
         node_cv = key_cv[0]
         node_ident = node_cv[0]
@@ -1378,12 +1378,7 @@ ORDER BY node.title, f.delta
     #
     # node -> relation -> node(s)
     #
-    if (len(key_cv) == 2 and
-          key_cv[0][0][0] == 'node' and
-          key_cv[1][0][0] == 'relation' and
-          len(value_cv) == 1 and
-          value_cv[0][0][0] == 'node'):
-
+    if chain_type == 'n-r-n':
         # key-node details
         k_node_cv = key_cv[0]
         k_node_ident = k_node_cv[0]
@@ -1490,13 +1485,7 @@ ORDER BY k_node.title, e1.entity_id, v_node.title
     #
     # node -> relation & node(s) -> relation_field (incl. term refs)
     #
-    if (len(key_cv) == 3 and
-          key_cv[0][0][0] == 'node' and
-          key_cv[1][0][0] == 'relation' and
-          key_cv[2][0][0] == 'node' and
-          len(value_cv) == 1 and
-          value_cv[0][0][0] == 'field'):
-
+    if chain_type == 'n-rn-rf':
         # node1 details
         node1_cv = key_cv[0]
         node1_ident = node1_cv[0]
@@ -1626,12 +1615,7 @@ ORDER BY k_node.title, e1.entity_id, f.delta
     #
     # node -> fc -> field (including term references)
     #
-    if (len(key_cv) == 2 and
-          key_cv[0][0][0] == 'node' and
-          key_cv[1][0][0] == 'fc' and
-          len(value_cv) == 1 and
-          value_cv[0][0][0] == 'field'):
-
+    if chain_type == 'n-fc-f':
         # node details
         node_cv = key_cv[0]
         node_ident = node_cv[0]
