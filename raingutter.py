@@ -1405,10 +1405,10 @@ ORDER BY node.title, {7}
             query_args.append(node_value)
         query_args += field_values
 
-        return (query_str, query_args)
+        return (query_str.strip(), query_args)
 
     #
-    # node -> relation -> node(s)
+    # node -> relation -> node
     #
     if chain_type == 'n-r-n':
         # key-node details
@@ -1512,10 +1512,10 @@ ORDER BY k_node.title, e1.entity_id, v_node.title
         if len(v_node_cv) > 2:
             query_args.append(v_node_value)
 
-        return (query_str, query_args)
+        return (query_str.strip(), query_args)
 
     #
-    # node -> relation & node(s) -> relation_field (incl. term refs)
+    # node -> relation & node -> relation_field (incl. term refs)
     #
     if chain_type == 'n-rn-rf':
         # node1 details
@@ -1642,7 +1642,7 @@ ORDER BY k_node.title, e1.entity_id, f.delta
         if len(field_cv) > 2:
             query_args.append(field_value)
 
-        return (query_str, query_args)
+        return (query_str.strip(), query_args)
 
     #
     # node -> fc -> field (including term references)
@@ -1757,7 +1757,7 @@ ORDER BY node.title, fcf.delta, f.delta
         if len(field_cv) > 2:
             query_args.append(field_value)
 
-        return (query_str, query_args)
+        return (query_str.strip(), query_args)
 
     #
     # should never be reached
@@ -2048,7 +2048,7 @@ def render_diff_report():
                 template = nori.core.cfg['templates'][template_index]
                 num_keys = len(template[4][1]['key_cv'])
                 diff_report += (
-                    'Template:{0}\nSource: {1}\nDest: {2}\n'
+                    'Template: {0}\nSource: {1}\nDest: {2}\n'
                     'Status: {3}changed\n\n' .
                     format(template[0],
                            nori.pps(source_row[num_keys:])
