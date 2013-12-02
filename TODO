@@ -4,13 +4,10 @@ multiples
 updates
 drupal read:
     add node -> title, fc -> label, etc.
-    add multi-field/node? vs at least note re multi-value vs multi-column
     inner joins for relations, etc?
     OR IS NULL cases
 configs for OCS fields
 testing
-
-key list length text, errors
 
 store chain_type?
 
