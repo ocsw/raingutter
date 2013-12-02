@@ -100,8 +100,7 @@ NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
 EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 '''
 
-# store the diffs in an ordered dict
-# format is one of:
+# the database diffs; format is one of:
 #     * rendered database 'key' strings ->
 #       lists of tuples in the format (template_index, exists_in_source,
 #       source_row, exists_in_dest, dest_row, has_been_changed)
@@ -592,8 +591,8 @@ def validate_generic_chain(key_index, key_cv, value_index, value_cv):
             nori.setting_check_not_blank(index + (i, 1))
 
 
-def drupal_chain_type(key_cv=None, value_cv=None, key_entities=None,
-                      value_entities=None):
+def get_drupal_chain_type(key_cv=None, value_cv=None, key_entities=None,
+                          value_entities=None):
 
     """
     Identify the type of a Drupal key/value chain.
@@ -663,6 +662,7 @@ def validate_drupal_chain(key_index, key_cv, value_index, value_cv):
 
     Dependencies:
         config settings: templates
+        functions: validate_drupal_cv(), get_drupal_chain_type()
         modules: nori
 
     """
@@ -681,7 +681,7 @@ def validate_drupal_chain(key_index, key_cv, value_index, value_cv):
         validate_drupal_cv(value_index + (i, ), cv[i], 'v')
         value_entities.append(value_cv[i][0][0])
 
-    if not drupal_chain_type(None, None, key_entities, value_entities):
+    if not get_drupal_chain_type(None, None, key_entities, value_entities):
         # [2] is the full path in cfg
         nori.err_exit('Error: the key_cv / value_cv chain in {0} is not\n'
                       'one of the currently allowed types; exiting.' .
@@ -1325,10 +1325,10 @@ def get_drupal_db_read_query(key_cv=[], value_cv=[]):
         see generic_drupal_db_query()
 
     Dependencies:
-        functions: drupal_chain_type()
+        functions: get_drupal_chain_type()
     """
 
-    chain_type = drupal_chain_type(key_cv, value_cv)
+    chain_type = get_drupal_chain_type(key_cv, value_cv)
 
     #
     # node -> field(s) (including term references)
