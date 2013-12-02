@@ -1107,16 +1107,15 @@ def drupal_db_query(db_obj=None, mode='read', key_cv=[], value_cv=[],
         node -> fc -> field(s) (including term references)
 
     These cases aren't supported - _yet_:
-        node -> fc -> fc -> field
-        node -> fc -> relation & node(s) -> relation_field
-        node -> fc -> fc -> relation & node(s) -> relation_field
+        node -> fc -> fc -> field(s)
+        node -> fc -> relation & node -> relation_field(s)
+        node -> fc -> fc -> relation & node -> relation_field(s)
         node -> fc -> relation -> node
         node -> fc -> fc -> relation -> node
         node -> relation -> [node -> fc]
         node -> fc -> relation -> [node -> fc]
         node -> fc -> fc -> relation -> [node -> fc]
         anything with relations of arity != 2
-        multiple target fields (except as indicated above)
         specifying nodes and FCs by field values
         etc.
 
@@ -1785,8 +1784,6 @@ ORDER BY k_node.title, e1.entity_id, {10}
 
             # order columns
             v_order_columns.append('f{0}.delta'.format(i))
-
-
 
         # query string and arguments
         query_str = (
