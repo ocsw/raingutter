@@ -1076,10 +1076,10 @@ def get_select_query(tables='', key_cv=[], value_cv=[], where_str=None,
     where_parts = []
     if where_str:
         where_parts.append('(' + where_str + ')')
-    for t in key_cv:
-        if len(t) > 2:
-            where_parts.append('({0} = %)'.format(t[0]))
-            query_args.append(t[2])
+    for cv in key_cv:
+        if len(cv) > 2:
+            where_parts.append('({0} = %)'.format(cv[0]))
+            query_args.append(cv[2])
     if where_parts:
         query_str += 'WHERE ' + '\nAND\n'.join(where_parts) + '\n'
     if more_str:
@@ -1105,18 +1105,18 @@ def get_update_query(tables='', key_cv=[], value_cv=[], where_str=None):
         query_str += tables
     query_str += '\n'
     set_parts = []
-    for t in value_cv:
-        if len(t) > 2:
-            set_parts.append('{0} = %'.format(t[0]))
-            query_args.append(t[2])
+    for cv in value_cv:
+        if len(cv) > 2:
+            set_parts.append('{0} = %'.format(cv[0]))
+            query_args.append(cv[2])
     query_str += 'SET ' + ', '.join(set_parts) + '\n'
     where_parts = []
     if where_str:
         where_parts.append('(' + where_str + ')')
-    for t in key_cv:
-        if len(t) > 2:
-            where_parts.append('({0} = %)'.format(t[0]))
-            query_args.append(t[2])
+    for cv in key_cv:
+        if len(cv) > 2:
+            where_parts.append('({0} = %)'.format(cv[0]))
+            query_args.append(cv[2])
     query_str += 'WHERE ' + '\nAND\n'.join(where_parts) + '\n'
     return (query_str, query_args)
 
