@@ -612,8 +612,7 @@ def drupal_chain_type(key_cv=None, value_cv=None, key_entities=None,
           key_entities[0] == 'node' and
           key_entities[1] == 'relation' and
           key_entities[2] == 'node' and
-          len(value_entities) == 1 and
-          value_entities[0] == 'field'):
+          False not in [entity == 'field' for entity in value_entities]):
         return 'n-rn-rf'
 
     if (len(key_entities) == 2 and
@@ -1104,7 +1103,7 @@ def drupal_db_query(db_obj=None, mode='read', key_cv=[], value_cv=[],
     cases:
         node -> field(s) (including term references)
         node -> relation -> node
-        node -> relation & node -> relation_field (incl. term refs)
+        node -> relation & node -> relation_field(s) (incl. term refs)
         node -> fc -> field(s) (including term references)
 
     These cases aren't supported - _yet_:
@@ -1514,7 +1513,7 @@ ORDER BY k_node.title, e1.entity_id, v_node.title
         return (query_str.strip(), query_args)
 
     #
-    # node -> relation & node -> relation_field (incl. term refs)
+    # node -> relation & node -> relation_field(s) (incl. term refs)
     #
     if chain_type == 'n-rn-rf':
         # node1 details
@@ -1562,27 +1561,64 @@ ORDER BY k_node.title, e1.entity_id, v_node.title
         if len(node2_cv) > 2:
             node2_value_cond = 'AND {0} = %s'.format(key_column_2)
 
-        # field details
-        field_cv = value_cv[0]
-        field_ident = field_cv[0]
-        field_value_type = field_cv[1]
-        if len(field_cv) > 2:
-            field_value = field_cv[2]
-        field_name = field_ident[1]
+        field_idents = {}
+        field_value_types = {}
+        field_values = []
+        field_names = {}
+        value_columns = []
+        field_joins = []
+        term_joins = []
+        field_entity_conds = []
+        field_value_conds = []
+        field_deleted_conds = []
+        v_order_columns = []
+        for i, field_cv in enumerate(value_cv):
+            # field details
+            field_idents[i] = field_cv[0]
+            field_value_types[i] = field_cv[1]
+            if len(field_cv) > 2:
+                field_values.append(field_cv[2])
+            field_names[i] = field_idents[i][1]
 
-        # handle term references
-        if field_value_type.startswith('term: '):
-            value_column = 't.name'
-            term_join = ('LEFT JOIN taxonomy_term_data AS t\n'
-                         'ON t.tid = f.field_{0}_tid}'.format(field_name))
-        else:
-            value_column = 'f.field_{0}_value'.format(field_name)
-            term_join = ''
+            # field joins
+            field_joins.append(
+                'LEFT JOIN field_data_field_{0} AS f{1}\n'
+                'ON f{1}.entity_id = e2.entity_id\n'
+                'AND f{1}.revision_id = e2.revision_id' .
+                format(field_names[i], i)
+            )
 
-        # handle specified field value
-        field_value_cond = ''
-        if len(field_cv) > 2:
-            field_value_cond = 'AND {0} = %s'.format(value_column)
+            # handle term reference
+            if field_value_types[i].startswith('term: '):
+                value_columns.append('t{0}.name'.format(i))
+                term_joins.append(
+                    'LEFT JOIN taxonomy_term_data AS t{0}\n'
+                    'ON t{0}.tid = f.field_{1}_tid}' .
+                    format(i, field_names[i])
+                )
+            else:
+                value_columns.append(
+                    'f{0}.field_{1}_value'.format(i, field_names[i])
+                )
+
+            # field entity type
+            field_entity_conds.append(
+                "AND f{0}.entity_type = 'relation'".format(i)
+            )
+
+            # handle specified field value
+            if len(field_cv) > 2:
+                field_value_conds.append(
+                    'AND {0} = %s'.format(value_columns[-1])
+                )
+
+            # not deleted
+            field_deleted_conds.append(
+                'AND (f{0}.deleted = 0 OR f{0}.deleted IS NULL)'.format(i)
+            )
+
+            # order columns
+            v_order_columns.append('f{0}.delta'.format(i))
 
         # query string and arguments
         query_str = (
@@ -1597,17 +1633,14 @@ LEFT JOIN field_data_endpoints AS e2
           AND e2.endpoints_r_index > e1.endpoints_r_index
 LEFT JOIN node AS node2
           ON node2.nid = e2.endpoints_entity_id
-LEFT JOIN field_data_field_{3} AS f
-          ON f.entity_id = e2.entity_id
-          AND f.revision_id = e2.revision_id
-{LEFT JOIN taxonomy_term_data AS t
-          ON t.tid = f.field_{3}_tid}
+{3}
+{4}
 WHERE (node1.vid IN
        (SELECT max(vid)
         FROM node
         GROUP BY nid))
 AND node1.type = %s
-{4}
+{5}
 AND (e1.revision_id IN
      (SELECT max(revision_id)
       FROM field_data_endpoints
@@ -1623,13 +1656,21 @@ AND (node2.vid IN
       FROM node
       GROUP BY nid))
 AND node2.type = %s
-{5}
-AND f.entity_type = 'relation'
-AND (f.deleted = 0 OR f.deleted IS NULL)
 {6}
-ORDER BY k_node.title, e1.entity_id, f.delta
-'''.format(key_column_1, key_column_2, value_column, field_name,
-           node1_value_cond, node2_value_cond, field_value_cond)
+{7}
+{8}
+{9}
+ORDER BY k_node.title, e1.entity_id, {10}
+''' .
+            format(key_column_1, key_column_2, ', '.join(value_columns),
+                   '\n'.join(field_joins),
+                   '\n'.join(term_joins),
+                   node1_value_cond,
+                   node2_value_cond,
+                   '\n'.join(field_entity_conds),
+                   '\n'.join(field_value_conds),
+                   '\n'.join(field_deleted_conds),
+                   ', '.join(v_order_columns))
         )
         query_args = [node1_type]
         if len(node1_cv) > 2:
@@ -1638,8 +1679,7 @@ ORDER BY k_node.title, e1.entity_id, f.delta
         query_args.append(node2_type)
         if len(node2_cv) > 2:
             query_args.append(node2_value)
-        if len(field_cv) > 2:
-            query_args.append(field_value)
+        query_args += field_values
 
         return (query_str.strip(), query_args)
 
