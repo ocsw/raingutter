@@ -682,6 +682,7 @@ def validate_drupal_chain(key_index, key_cv, value_index, value_cv):
         value_entities.append(value_cv[i][0][0])
 
     if not drupal_chain_type(None, None, key_entities, value_entities):
+        # [2] is the full path in cfg
         nori.err_exit('Error: the key_cv / value_cv chain in {0} is not\n'
                       'one of the currently allowed types; exiting.' .
                       format(nori.setting_walk(key_index[0:-1])[2]),
@@ -1107,7 +1108,7 @@ def get_update_query(tables='', key_cv=[], value_cv=[], where_str=None):
     for t in value_cv:
         if len(t) > 2:
             set_parts.append('{0} = %'.format(t[0]))
-            query_args.append(t[1])
+            query_args.append(t[2])
     query_str += 'SET ' + ', '.join(set_parts) + '\n'
     where_parts = []
     if where_str:
@@ -1976,7 +1977,7 @@ Exiting.'''.format(*map(nori.pps, [key_mode, key_list, key_cv, row]))
             for i, match_val in enumerate(k_match):
                 if row[i] != match_val:
                     break
-                if i == len(k_match) - 1:
+                if i == (len(k_match) - 1):
                     found = True
             if found:
                 break
@@ -2010,8 +2011,10 @@ def key_filter(template_index, key_cv, row):
 
     """
 
+    template = nori.core.cfg['templates'][template_index]
+
     if (nori.core.cfg['key_mode'] == 'all' and
-          nori.core.cfg['templates'][template_index][T_KEY_MODE_IDX] == 'all'):
+          template[T_KEY_MODE_IDX] == 'all'):
         return True
 
     if not check_key_list_match(
@@ -2019,10 +2022,8 @@ def key_filter(template_index, key_cv, row):
           key_cv, row):
         return False
 
-    if not check_key_list_match(
-          nori.core.cfg['templates'][template_index][T_KEY_MODE_IDX],
-          nori.core.cfg['templates'][template_index][T_KEY_LIST_IDX],
-          key_cv, row):
+    if not check_key_list_match(template[T_KEY_MODE_IDX],
+                                template[T_KEY_LIST_IDX], key_cv, row):
         return False
 
     return True
