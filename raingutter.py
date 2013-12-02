@@ -274,10 +274,11 @@ Key list entries may be tuples if there are multiple key columns in the
 database queries.
 
 The entries in the key list will be compared with the key columns of each
-data row beginning at the first column.  It is an error for a row to have
-fewer key columns than are in the key list, but if a row has more key
-columns, columns which have no corresponding entry in the key list will be
-ignored for purposes of the comparison.
+data row beginning at the first column, after applying the transform
+function.  It is an error for a row to have fewer key columns than are in
+the key list, but if a row has more key columns, columns which have no
+corresponding entry in the key list will be ignored for purposes of the
+comparison.
 '''
     ),
     default=[],
@@ -322,10 +323,11 @@ The checks are made after the appropriate transform functions are applied
 This is separate from the per-template setting (see above), and is only
 useful if all templates share a common prefix of key columns.  (That is, the
 entries in the key list (below) will be compared with the key columns of
-each data row beginning at the first column.  It is an error for a row to
-have fewer key columns than are in the key list, but if a row has more key
-columns, columns which have no corresponding entry in the key list will be
-ignored for purposes of the comparison.)
+each data row beginning at the first column, after applying the transform
+function (see above).  It is an error for a row to have fewer key columns
+than are in the key list, but if a row has more key columns, columns which
+have no corresponding entry in the key list will be ignored for purposes of
+the comparison.)
 
 If there is a conflict between this setting and the per-template key mode
 setting in which one excludes an entry and the other includes it, the entry
@@ -1901,6 +1903,58 @@ def clear_drupal_cache(db_obj):
     return True
 
 
+def check_key_list_match(key_mode, key_list, key_cv, row):
+    """
+    Search for a match between a key list and a row.
+    Returns True or False.
+    Parameters:
+        key_mode: the per-template or global key mode ('all', 'include',
+                  or 'exclude')
+        key_list: the per-template or global key list to check for a
+                  match
+        key_cv: the key_cv argument to the query function that produced
+                the row
+        row: a single row from the results returned by a query function
+        (see the description of the templates setting, above, for more
+        details)
+    Dependencies:
+        modules: nori
+    """
+    if key_mode == 'all':
+        return True
+    else:
+        num_keys = len(key_cv)
+        found = False
+        for k_match in key_list:
+            k_match = nori.scalar_to_tuple(k_match)
+            # sanity check
+            if len(k_match) > num_keys:
+                nori.core.email_logger.error(
+'''
+Error: key list entry has more elements than the actual row in call to
+check_key_list_match(); call was (in expanded notation):
+
+check_key_list_match(key_mode={0},
+                     key_list={1},
+                     key_cv={2},
+                     row={3})
+
+Exiting.'''.format(*map(nori.pps, [key_mode, key_list, key_cv, row]))
+                )
+                sys.exit(nore.core.exitvals['internal']['num'])
+            for i, match_val in enumerate(k_match):
+                if row[i] != match_val:
+                    break
+                if i == len(k_match) - 1:
+                    found = True
+            if found:
+                break
+        if key_mode == 'include':
+            return found
+        if key_mode == 'exclude':
+            return not found
+
+
 def key_filter(template_index, key_cv, row):
 
     """
@@ -1920,45 +1974,23 @@ def key_filter(template_index, key_cv, row):
 
     Dependencies:
         config settings: templates, key_mode, key_list
+        functions: check_key_list_match()
         modules: nori
 
     """
-
-    def find_keys(key_mode, key_list, key_cv, row):
-        """Search for a match between a key list and a row."""
-        if key_mode == 'all':
-            return True
-        else:
-            num_keys = len(key_cv)
-            found = False
-            for k_match in key_list:
-                k_match = nori.scalar_to_tuple(k_match)
-                # sanity check
-                if len(k_match) > num_keys:
-                    return False
-                for i, match_val in enumerate(k_match):
-                    if row[i] != match_val:
-                        break
-                    if i == len(k_match) - 1:
-                        found = True
-                if found:
-                    break
-            if key_mode == 'include':
-                return found
-            if key_mode == 'exclude':
-                return not found
 
     if (nori.core.cfg['key_mode'] == 'all' and
           nori.core.cfg['templates'][template_index][12] == 'all'):
         return True
 
-    if not find_keys(nori.core.cfg['key_mode'], nori.core.cfg['key_list'],
-                     key_cv, row):
+    if not check_key_list_match(
+          nori.core.cfg['key_mode'], nori.core.cfg['key_list'],
+          key_cv, row):
         return False
 
-    if not find_keys(nori.core.cfg['templates'][template_index][12],
-                     nori.core.cfg['templates'][template_index][13],
-                     key_cv, row):
+    if not check_key_list_match(
+          nori.core.cfg['templates'][template_index][12],
+          nori.core.cfg['templates'][template_index][13], key_cv, row):
         return False
 
     return True
