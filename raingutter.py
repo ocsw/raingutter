@@ -1299,7 +1299,7 @@ def get_drupal_db_read_query(key_cv=[], value_cv=[]):
     chain_type = drupal_chain_type(key_cv, value_cv)
 
     #
-    # node -> fields (including term references)
+    # node -> field(s) (including term references)
     #
     if chain_type == 'n-f':
         # node details
@@ -1330,7 +1330,7 @@ def get_drupal_db_read_query(key_cv=[], value_cv=[]):
         field_joins = []
         term_joins = []
         field_value_conds = []
-        deleted_conds = []
+        field_deleted_conds = []
         v_order_columns = []
         for i, field_cv in enumerate(value_cv):
             # field details
@@ -1367,7 +1367,7 @@ def get_drupal_db_read_query(key_cv=[], value_cv=[]):
                 )
 
             # not deleted
-            deleted_conds.append(
+            field_deleted_conds.append(
                 'AND (f{0}.deleted = 0 OR f{0}.deleted IS NULL)'.format(i)
             )
 
@@ -1396,7 +1396,7 @@ ORDER BY node.title, {7}
                    '\n'.join(term_joins),
                    node_value_cond,
                    '\n'.join(field_value_conds),
-                   '\n'.join(deleted_conds),
+                   '\n'.join(field_deleted_conds),
                    ', '.join(v_order_columns))
         )
         query_args = [node_type]
