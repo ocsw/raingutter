@@ -43,6 +43,28 @@ import nori
 #                              VARIABLES
 ########################################################################
 
+############
+# constants
+############
+
+# template elements (see the 'templates' setting)
+T_NAME_IDX = 0
+T_MULTIPLE_IDX = 1
+T_S_TYPE_IDX = 2
+T_S_QUERY_FUNC_IDX = 3
+T_S_QUERY_ARGS_IDX = 4
+T_TO_D_FUNC_IDX = 5
+T_S_CHANGE_FUNC_IDX = 6
+T_D_TYPE_IDX = 7
+T_D_QUERY_FUNC_IDX = 8
+T_D_QUERY_ARGS_IDX = 9
+T_TO_S_FUNC_IDX = 10
+T_D_CHANGE_FUNC_IDX = 11
+T_KEY_MODE_IDX = 12
+T_KEY_LIST_IDX = 13
+T_IDX_COUNT = 14
+
+
 ##################
 # status and meta
 ##################
@@ -786,67 +808,76 @@ def validate_config():
     nori.setting_check_not_empty('templates')
     for i, template in enumerate(nori.core.cfg['templates']):
         nori.setting_check_type(('templates', i), nori.core.CONTAINER_TYPES)
-        nori.setting_check_len(('templates', i), 14, 14)
+        nori.setting_check_len(('templates', i), T_IDX_COUNT, T_IDX_COUNT)
         # template name
-        nori.setting_check_type(('templates', i, 0), nori.core.STRING_TYPES)
+        nori.setting_check_type(('templates', i, T_NAME_IDX),
+                                nori.core.STRING_TYPES)
         # multiple rows per key?
-        nori.setting_check_type(('templates', i, 1), bool)
+        nori.setting_check_type(('templates', i, T_MULTIPLE_IDX), bool)
         # source-DB type
-        nori.setting_check_list(('templates', i, 2), ['generic', 'drupal'])
+        nori.setting_check_list(('templates', i, T_S_TYPE_IDX),
+                                ['generic', 'drupal'])
         # source-DB query function
-        nori.setting_check_callable(('templates', i, 3), may_be_none=True)
+        nori.setting_check_callable(('templates', i, T_S_QUERY_FUNC_IDX),
+                                    may_be_none=True)
         # source-DB query function arguments
-        nori.setting_check_type(('templates', i, 4),
+        nori.setting_check_type(('templates', i, T_S_QUERY_ARGS_IDX),
                                 nori.core.CONTAINER_TYPES)
-        nori.setting_check_len(('templates', i, 4), 2, 2)
-        nori.setting_check_type(('templates', i, 4, 0),
+        nori.setting_check_len(('templates', i, T_S_QUERY_ARGS_IDX), 2, 2)
+        nori.setting_check_type(('templates', i, T_S_QUERY_ARGS_IDX, 0),
                                 nori.core.CONTAINER_TYPES)
-        nori.setting_check_type(('templates', i, 4, 1),
+        nori.setting_check_type(('templates', i, T_S_QUERY_ARGS_IDX, 1),
                                 nori.core.MAPPING_TYPES)
         # to-dest transform function
-        nori.setting_check_callable(('templates', i, 5), may_be_none=True)
+        nori.setting_check_callable(('templates', i, T_TO_D_FUNC_IDX),
+                                    may_be_none=True)
         # source-DB change callback function
-        nori.setting_check_callable(('templates', i, 6), may_be_none=True)
+        nori.setting_check_callable(('templates', i, T_S_CHANGE_FUNC_IDX),
+                                    may_be_none=True)
         # dest-DB type
-        nori.setting_check_list(('templates', i, 7), ['generic', 'drupal'])
+        nori.setting_check_list(('templates', i, T_D_TYPE_IDX),
+                                ['generic', 'drupal'])
         # dest-DB query function
-        nori.setting_check_callable(('templates', i, 8), may_be_none=True)
+        nori.setting_check_callable(('templates', i, T_D_QUERY_FUNC_IDX),
+                                    may_be_none=True)
         # dest-DB query function arguments
-        nori.setting_check_type(('templates', i, 9),
+        nori.setting_check_type(('templates', i, T_D_QUERY_ARGS_IDX),
                                 nori.core.CONTAINER_TYPES)
-        nori.setting_check_len(('templates', i, 9), 2, 2)
-        nori.setting_check_type(('templates', i, 9, 0),
+        nori.setting_check_len(('templates', i, T_D_QUERY_ARGS_IDX), 2, 2)
+        nori.setting_check_type(('templates', i, T_D_QUERY_ARGS_IDX, 0),
                                 nori.core.CONTAINER_TYPES)
-        nori.setting_check_type(('templates', i, 9, 1),
+        nori.setting_check_type(('templates', i, T_D_QUERY_ARGS_IDX, 1),
                                 nori.core.MAPPING_TYPES)
         # to-source transform function
-        nori.setting_check_callable(('templates', i, 10), may_be_none=True)
+        nori.setting_check_callable(('templates', i, T_TO_S_FUNC_IDX),
+                                    may_be_none=True)
         # dest-DB change callback function
-        nori.setting_check_callable(('templates', i, 11), may_be_none=True)
+        nori.setting_check_callable(('templates', i, T_D_CHANGE_FUNC_IDX),
+                                    may_be_none=True)
         # key mode
-        nori.setting_check_list(('templates', i, 12),
+        nori.setting_check_list(('templates', i, T_KEY_MODE_IDX),
                                 ['all', 'include', 'exclude'])
-        if nori.core.cfg['templates'][i][12] != 'all':
+        if template[T_KEY_MODE_IDX] != 'all':
             # key list
-            nori.setting_check_not_empty(('templates', i, 13))
+            nori.setting_check_not_empty(('templates', i, T_KEY_LIST_IDX))
 
         # templates: query-function arguments
-        s_db_type = nori.core.cfg['templates'][i][2]
-        s_key_ind = ('templates', i, 4, 1, 'key_cv')
-        s_key_cv = nori.core.cfg['templates'][i][4][1]['key_cv']
-        s_value_ind = ('templates', i, 4, 1, 'value_cv')
-        s_value_cv = nori.core.cfg['templates'][i][4][1]['value_cv']
+        s_db_type = template[T_S_TYPE_IDX]
+        s_key_ind = ('templates', i, T_S_QUERY_ARGS_IDX, 1, 'key_cv')
+        s_key_cv = template[T_S_QUERY_ARGS_IDX][1]['key_cv']
+        s_value_ind = ('templates', i, T_S_QUERY_ARGS_IDX, 1, 'value_cv')
+        s_value_cv = template[T_S_QUERY_ARGS_IDX][1]['value_cv']
         if s_db_type == 'generic':
             validate_generic_chain(s_key_ind, s_key_cv, s_value_ind,
                                    s_value_cv)
         elif s_db_type == 'drupal':
             validate_drupal_chain(s_key_ind, s_key_cv, s_value_ind,
                                   s_value_cv)
-        d_db_type = nori.core.cfg['templates'][i][7]
-        d_key_ind = ('templates', i, 9, 1, 'key_cv')
-        d_key_cv = nori.core.cfg['templates'][i][9][1]['key_cv']
-        d_value_ind = ('templates', i, 9, 1, 'value_cv')
-        d_value_cv = nori.core.cfg['templates'][i][9][1]['value_cv']
+        d_db_type = template[T_D_TYPE_IDX]
+        d_key_ind = ('templates', i, T_D_QUERY_ARGS_IDX, 1, 'key_cv')
+        d_key_cv = template[T_D_QUERY_ARGS_IDX][1]['key_cv']
+        d_value_ind = ('templates', i, T_D_QUERY_ARGS_IDX, 1, 'value_cv')
+        d_value_cv = template[T_D_QUERY_ARGS_IDX][1]['value_cv']
         if d_db_type == 'generic':
             validate_generic_chain(d_key_ind, d_key_cv, d_value_ind,
                                    d_value_cv)
@@ -1980,7 +2011,7 @@ def key_filter(template_index, key_cv, row):
     """
 
     if (nori.core.cfg['key_mode'] == 'all' and
-          nori.core.cfg['templates'][template_index][12] == 'all'):
+          nori.core.cfg['templates'][template_index][T_KEY_MODE_IDX] == 'all'):
         return True
 
     if not check_key_list_match(
@@ -1989,8 +2020,9 @@ def key_filter(template_index, key_cv, row):
         return False
 
     if not check_key_list_match(
-          nori.core.cfg['templates'][template_index][12],
-          nori.core.cfg['templates'][template_index][13], key_cv, row):
+          nori.core.cfg['templates'][template_index][T_KEY_MODE_IDX],
+          nori.core.cfg['templates'][template_index][T_KEY_LIST_IDX],
+          key_cv, row):
         return False
 
     return True
@@ -2061,11 +2093,11 @@ def log_diff(template_index, exists_in_source, source_row, exists_in_dest,
     elif nori.core.cfg['report_order'] == 'keys':
         keys_str = ''
         if source_row is not None:
-            num_keys = len(template[4][1]['key_cv'])
+            num_keys = len(template[T_S_QUERY_ARGS_IDX][1]['key_cv'])
             for k in source_row[0:num_keys]:
                 keys_str += str(k)
         elif dest_row is not None:
-            num_keys = len(template[9][1]['key_cv'])
+            num_keys = len(template[T_D_QUERY_ARGS_IDX][1]['key_cv'])
             for k in dest_row[0:num_keys]:
                 keys_str += str(k)
         if keys_str not in diff_dict:
@@ -2078,7 +2110,7 @@ def log_diff(template_index, exists_in_source, source_row, exists_in_dest,
     nori.core.status_logger.info(
         'Diff found for template {0} ({1}):\nS: {2}\nD: {3}' .
         format(template_index,
-               nori.pps(template[0]),
+               nori.pps(template[T_NAME_IDX]),
                nori.pps(source_row) if exists_in_source
                                     else '[no match in source database]',
                nori.pps(dest_row) if exists_in_dest
@@ -2127,7 +2159,8 @@ def render_diff_report():
         for template_index in diff_dict:
             template = nori.core.cfg['templates'][template_index]
             section_header = ('Template {0} ({1}):' .
-                              format(template_index, nori.pps(template[0])))
+                              format(template_index,
+                                     nori.pps(template[T_NAME_IDX])))
             section_header += '\n' + ('-' * len(section_header)) + '\n\n'
             diff_report += section_header
             for diff_t in diff_dict[template_index]:
@@ -2161,11 +2194,11 @@ def render_diff_report():
                 dest_row = diff_t[4]
                 has_been_changed = diff_t[5]
                 template = nori.core.cfg['templates'][template_index]
-                num_keys = len(template[4][1]['key_cv'])
+                num_keys = len(template[T_S_QUERY_ARGS_IDX][1]['key_cv'])
                 diff_report += (
                     'Template: {0}\nSource: {1}\nDest: {2}\n'
                     'Status: {3}changed\n\n' .
-                    format(template[0],
+                    format(template[T_NAME_IDX],
                            nori.pps(source_row[num_keys:])
                                if exists_in_source
                                else '[no match in source database]',
@@ -2234,37 +2267,37 @@ def run_mode_hook():
 
     # template loop
     for t_index, template in enumerate(nori.core.cfg['templates']):
-        t_name = template[0]
-        t_multiple = template[1]
+        t_name = template[T_NAME_IDX]
+        t_multiple = template[T_MULTIPLE_IDX]
         if not nori.core.cfg['reverse']:
-            source_type = template[2]
-            source_func = template[3]
-            source_args = template[4][0]
-            source_kwargs = template[4][1]
-            to_dest_func = template[5]
-            source_change_func = template[6]
-            dest_type = template[7]
-            dest_func = template[8]
-            dest_args = template[9][0]
-            dest_kwargs = template[9][1]
-            to_source_func = template[10]
-            dest_change_func = template[11]
+            source_type = template[T_S_TYPE_IDX]
+            source_func = template[T_S_QUERY_FUNC_IDX]
+            source_args = template[T_S_QUERY_ARGS_IDX][0]
+            source_kwargs = template[T_S_QUERY_ARGS_IDX][1]
+            to_dest_func = template[T_TO_D_FUNC_IDX]
+            source_change_func = template[T_S_CHANGE_FUNC_IDX]
+            dest_type = template[T_D_TYPE_IDX]
+            dest_func = template[T_D_QUERY_FUNC_IDX]
+            dest_args = template[T_D_QUERY_ARGS_IDX][0]
+            dest_kwargs = template[T_D_QUERY_ARGS_IDX][1]
+            to_source_func = template[T_TO_S_FUNC_IDX]
+            dest_change_func = template[T_D_CHANGE_FUNC_IDX]
 
         else:
-            source_type = template[7]
-            source_func = template[8]
-            source_args = template[9][0]
-            source_kwargs = template[9][1]
-            to_dest_func = template[10]
-            source_change_func = template[11]
-            dest_type = template[2]
-            dest_func = template[3]
-            dest_args = template[4][0]
-            dest_kwargs = template[4][1]
-            to_source_func = template[5]
-            dest_change_func = template[6]
-        t_key_mode = template[12]
-        t_key_list = template[13]
+            source_type = template[T_D_TYPE_IDX]
+            source_func = template[T_D_QUERY_FUNC_IDX]
+            source_args = template[T_D_QUERY_ARGS_IDX][0]
+            source_kwargs = template[T_D_QUERY_ARGS_IDX][1]
+            to_dest_func = template[T_TO_S_FUNC_IDX]
+            source_change_func = template[T_D_CHANGE_FUNC_IDX]
+            dest_type = template[T_S_TYPE_IDX]
+            dest_func = template[T_S_QUERY_FUNC_IDX]
+            dest_args = template[T_S_QUERY_ARGS_IDX][0]
+            dest_kwargs = template[T_S_QUERY_ARGS_IDX][1]
+            to_source_func = template[T_TO_D_FUNC_IDX]
+            dest_change_func = template[T_S_CHANGE_FUNC_IDX]
+        t_key_mode = template[T_KEY_MODE_IDX]
+        t_key_list = template[T_KEY_LIST_IDX]
         callback_needed = False
 
         # filter by template
