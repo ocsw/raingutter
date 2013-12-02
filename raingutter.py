@@ -2164,6 +2164,7 @@ def run_mode_hook():
 
     """
     Do the actual work.
+
     Dependencies:
         config settings: action, reverse, bidir, templates,
                          template_mode, template_list,
@@ -2178,12 +2179,29 @@ def run_mode_hook():
                    callback functions)
         modules: copy, nori
         Python: 2.0/3.2, for callable()
+
     """
 
+    #
+    # note: 'source'/'s_' and 'dest'/'d_' below refer to the
+    # actual source and destination DBs, after applying the value of
+    # the 'reverse' setting
+    #
+
+    # connect to DBs
+    if not nori.core.cfg['reverse']:
+        s_db = sourcedb
+        d_db = destdb
+    else:
+        s_db = destdb
+        d_db = sourcedb
+    s_db.connect()
+    s_db.autocommit(True)
+    d_db.connect()
+    d_db.autocommit(True)
+
+    # template loop
     for t_index, template in enumerate(nori.core.cfg['templates']):
-        # note: 'source'/'s_' and 'dest'/'d_' below refer to the
-        # actual source and destination DBs, after applying the value of
-        # the 'reverse' setting
         t_name = template[0]
         t_multiple = template[1]
         if not nori.core.cfg['reverse']:
@@ -2199,8 +2217,7 @@ def run_mode_hook():
             dest_kwargs = template[9][1]
             to_source_func = template[10]
             dest_change_func = template[11]
-            s_db = sourcedb
-            d_db = destdb
+
         else:
             source_type = template[7]
             source_func = template[8]
@@ -2214,17 +2231,9 @@ def run_mode_hook():
             dest_kwargs = template[4][1]
             to_source_func = template[5]
             dest_change_func = template[6]
-            s_db = destdb
-            d_db = sourcedb
         t_key_mode = template[12]
         t_key_list = template[13]
         callback_needed = False
-
-        # connect to DBs
-        s_db.connect()
-        s_db.autocommit(True)
-        d_db.connect()
-        d_db.autocommit(True)
 
         # filter by template
         if (nori.cfg['template_mode'] == 'include' and
