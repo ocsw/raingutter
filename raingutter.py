@@ -1387,7 +1387,7 @@ AND node.type = %s
 {4}
 {5}
 {6}
-ORDER BY node.title, {7}
+ORDER BY node.title, node.nid, {7}
 ''' .
             format(key_column, ', '.join(value_columns),
                    '\n'.join(field_joins),
@@ -1496,7 +1496,7 @@ AND (v_node.vid IN
       GROUP BY nid))
 {4}
 {5}
-ORDER BY k_node.title, e1.entity_id, v_node.title
+ORDER BY k_node.title, k_node.nid, e1.entity_id, v_node.title, v_node.nid
 ''' .
             format(key_column, value_column, extra_value_cols,
                    k_node_value_cond,
@@ -1662,7 +1662,7 @@ AND node2.type = %s
 {7}
 {8}
 {9}
-ORDER BY k_node.title, e1.entity_id, {10}
+ORDER BY k_node.title, k_node.nid, e1.entity_id, {10}
 ''' .
             format(key_column_1, key_column_2, ', '.join(value_columns),
                    '\n'.join(field_joins),
@@ -1818,7 +1818,7 @@ AND (fci.archived = 0 OR fci.archived IS NULL)
 {8}
 {9}
 {10}
-ORDER BY node.title, fcf.delta, {11}
+ORDER BY node.title, node.nid, fcf.delta, {11}
 ''' .
             format(key_column,
                    (extra_key_column + ', ') if extra_key_column else '',
