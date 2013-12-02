@@ -619,8 +619,7 @@ def drupal_chain_type(key_cv=None, value_cv=None, key_entities=None,
     if (len(key_entities) == 2 and
           key_entities[0] == 'node' and
           key_entities[1] == 'fc' and
-          len(value_entities) == 1 and
-          value_entities[0] == 'field'):
+          False not in [entity == 'field' for entity in value_entities]):
         return 'n-fc-f'
 
     return None
@@ -1103,10 +1102,10 @@ def drupal_db_query(db_obj=None, mode='read', key_cv=[], value_cv=[],
 
     Specifically, the design goal is to be able to handle the following
     cases:
-        node -> fields (including term references)
+        node -> field(s) (including term references)
         node -> relation -> node
         node -> relation & node -> relation_field (incl. term refs)
-        node -> fc -> field (including term references)
+        node -> fc -> field(s) (including term references)
 
     These cases aren't supported - _yet_:
         node -> fc -> fc -> field
@@ -1645,7 +1644,7 @@ ORDER BY k_node.title, e1.entity_id, f.delta
         return (query_str.strip(), query_args)
 
     #
-    # node -> fc -> field (including term references)
+    # node -> fc -> field(s) (including term references)
     #
     if chain_type == 'n-fc-f':
         # node details
@@ -1688,27 +1687,66 @@ ORDER BY k_node.title, e1.entity_id, f.delta
         if len(fc_cv) > 2:
             fc_value_cond = 'AND {0} = %s'.format(extra_key_column)
 
-        # field details
-        field_cv = value_cv[0]
-        field_ident = field_cv[0]
-        field_value_type = field_cv[1]
-        if len(field_cv) > 2:
-            field_value = field_cv[2]
-        field_name = field_ident[1]
+        field_idents = {}
+        field_value_types = {}
+        field_values = []
+        field_names = {}
+        value_columns = []
+        field_joins = []
+        term_joins = []
+        field_entity_conds = []
+        field_value_conds = []
+        field_deleted_conds = []
+        v_order_columns = []
+        for i, field_cv in enumerate(value_cv):
+            # field details
+            field_idents[i] = field_cv[0]
+            field_value_types[i] = field_cv[1]
+            if len(field_cv) > 2:
+                field_values.append(field_cv[2])
+            field_names[i] = field_idents[i][1]
 
-        # handle term references
-        if field_value_type.startswith('term: '):
-            value_column = 't.name'
-            term_join = ('LEFT JOIN taxonomy_term_data AS t\n'
-                         'ON t.tid = f.field_{0}_tid}'.format(field_name))
-        else:
-            value_column = 'f.field_{0}_value'.format(field_name)
-            term_join = ''
+            # field joins
+            field_joins.append(
+                'LEFT JOIN field_data_field_{0} AS f{1}\n'
+                'ON f{1}.entity_id = fci.item_id\n'
+                'AND f{1}.revision_id = fci.revision_id' .
+                format(field_names[i], i)
+            )
 
-        # handle specified field value
-        field_value_cond = ''
-        if len(field_cv) > 2:
-            field_value_cond = 'AND {0} = %s'.format(value_column)
+            # handle term reference
+            if field_value_types[i].startswith('term: '):
+                value_columns.append('t{0}.name'.format(i))
+                term_joins.append(
+                    'LEFT JOIN taxonomy_term_data AS t{0}\n'
+                    'ON t{0}.tid = f.field_{1}_tid}' .
+                    format(i, field_names[i])
+                )
+            else:
+                value_columns.append(
+                    'f{0}.field_{1}_value'.format(i, field_names[i])
+                )
+
+            # field entity type
+            field_entity_conds.append(
+                "AND f{0}.entity_type = 'field_collection_item'".format(i)
+            )
+
+            # handle specified field value
+            if len(field_cv) > 2:
+                field_value_conds.append(
+                    'AND {0} = %s'.format(value_columns[-1])
+                )
+
+            # not deleted
+            field_deleted_conds.append(
+                'AND (f{0}.deleted = 0 OR f{0}.deleted IS NULL)'.format(i)
+            )
+
+            # order columns
+            v_order_columns.append('f{0}.delta'.format(i))
+
+
 
         # query string and arguments
         query_str = (
@@ -1721,17 +1759,14 @@ LEFT JOIN field_data_field_{3} AS fcf
 LEFT JOIN field_collection_item as fci
           ON fci.item_id = fcf.field_{3}_value
           AND fci.revision_id = fcf.field_{3}_revision_id
-LEFT JOIN field_data_field_{4} AS f
-          ON f.entity_id = fci.item_id
-          AND f.revision_id = fci.revision_id
-{LEFT JOIN taxonomy_term_data AS t
-          ON t.tid = f.field_{4}_tid}
+{4}
+{5}
 WHERE (node.vid IN
        (SELECT max(vid)
         FROM node
         GROUP BY nid))
 AND node.type = %s
-{5}
+{6}
 AND fcf.entity_type = 'node'
 AND (fcf.deleted = 0 OR fcf.deleted IS NULL)
 AND (fci.revision_id IN
@@ -1739,23 +1774,31 @@ AND (fci.revision_id IN
       FROM field_collection_item
       GROUP BY item_id))
 AND (fci.archived = 0 OR fci.archived IS NULL)
-{6}
-AND f.entity_type = 'field_collection_item'
-AND (f.deleted = 0 OR f.deleted IS NULL)
 {7}
-ORDER BY node.title, fcf.delta, f.delta
-'''.format(key_column,
-           (extra_key_column + ', ') if extra_key_column else '',
-           value_column, fc_type, field_name, node_value_cond,
-           fc_value_cond, field_value_cond)
+{8}
+{9}
+{10}
+ORDER BY node.title, fcf.delta, {11}
+''' .
+            format(key_column,
+                   (extra_key_column + ', ') if extra_key_column else '',
+                   ', '.join(value_columns),
+                    fc_type,
+                   '\n'.join(field_joins),
+                   '\n'.join(term_joins),
+                   node_value_cond,
+                   fc_value_cond,
+                   '\n'.join(field_entity_conds),
+                   '\n'.join(field_value_conds),
+                   '\n'.join(field_deleted_conds),
+                   ', '.join(v_order_columns))
         )
         query_args = [node_type]
         if len(node_cv) > 2:
             query_args.append(node_value)
         if len(fc_cv) > 2:
             query_args.append(fc_value)
-        if len(field_cv) > 2:
-            query_args.append(field_value)
+        query_args += field_values
 
         return (query_str.strip(), query_args)
 
