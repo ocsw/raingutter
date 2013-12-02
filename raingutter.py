@@ -1479,7 +1479,7 @@ WHERE (k_node.vid IN
         FROM node
         GROUP BY nid))
 AND k_node.type = %s
-{2}
+{3}
 AND (e1.revision_id IN
      (SELECT max(revision_id)
       FROM field_data_endpoints
@@ -1494,11 +1494,14 @@ AND (v_node.vid IN
      (SELECT max(vid)
       FROM node
       GROUP BY nid))
-{3}
 {4}
+{5}
 ORDER BY k_node.title, e1.entity_id, v_node.title
-'''.format(key_column, value_column, extra_value_cols, k_node_value_cond,
-           v_node_type_cond, v_node_value_cond)
+''' .
+            format(key_column, value_column, extra_value_cols,
+                   k_node_value_cond,
+                   v_node_type_cond,
+                   v_node_value_cond)
         )
         query_args = [k_node_type]
         if len(k_node_cv) > 2:
