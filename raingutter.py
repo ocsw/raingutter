@@ -2286,7 +2286,8 @@ def do_sync(t_index, s_row, diff_k, diff_i):
     Dependencies:
         config settings: reverse, templates
         globals: (some of) T_*
-        functions: key_value_copy(), update_diff()
+        functions: generic_db_query(), drupal_db_query(),
+                   key_value_copy(), update_diff()
         modules: copy, nori
         Python: 2.0/3.2, for callable()
 
@@ -2295,17 +2296,26 @@ def do_sync(t_index, s_row, diff_k, diff_i):
     # get settings and resources
     template = nori.core.cfg['templates'][t_index]
     if not nori.core.cfg['reverse']:
+        dest_type = template[T_D_TYPE_IDX]
         dest_func = template[T_D_QUERY_FUNC_IDX]
         dest_args = template[T_D_QUERY_ARGS_IDX][0]
         dest_kwargs = template[T_D_QUERY_ARGS_IDX][1]
         dest_change_func = template[T_D_CHANGE_FUNC_IDX]
         d_db = destdb
     else:
+        dest_type = template[T_S_TYPE_IDX]
         dest_func = template[T_S_QUERY_FUNC_IDX]
         dest_args = template[T_S_QUERY_ARGS_IDX][0]
         dest_kwargs = template[T_S_QUERY_ARGS_IDX][1]
         dest_change_func = template[T_S_CHANGE_FUNC_IDX]
         d_db = sourcedb
+
+    # handle unspecified function
+    if dest_func is None:
+        if dest_type == 'generic':
+            dest_func = generic_db_query
+        elif dest_type == 'drupal':
+            dest_func = drupal_db_query
 
     # set up the new cv sequences
     new_key_cv, new_value_cv = key_value_copy(
