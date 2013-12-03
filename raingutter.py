@@ -565,6 +565,10 @@ Ignored if send_report_emails is False.
 #                              FUNCTIONS
 ########################################################################
 
+####################
+# config validation
+####################
+
 def validate_generic_chain(key_index, key_cv, value_index, value_cv):
     """
     Validate a generic key_cv/value_cv chain.
@@ -589,6 +593,69 @@ def validate_generic_chain(key_index, key_cv, value_index, value_cv):
             nori.setting_check_not_blank(index + (i, 0))
             # data type
             nori.setting_check_not_blank(index + (i, 1))
+
+
+def validate_drupal_cv(cv_index, cv, kv):
+
+    """
+    Validate a single Drupal key_cv/value_cv entry.
+
+    Parameters:
+        cv_index: the index tuple of the entry in the templates setting
+        cv: the entry itself
+        kv: 'k' if this is entry is part of a key_cv sequence, or 'v' if
+            it's part of a value_cv sequence
+
+    Dependencies:
+        config settings: templates
+        modules: nori
+
+    """
+
+    ident_index = cv_index + (0, )
+    ident = cv[0]
+    data_type_index = cv_index + (1, )
+    data_type = cv[1]
+
+    nori.setting_check_type(cv_index, nori.core.CONTAINER_TYPES)
+    nori.setting_check_len(cv_index, 2, 3)
+
+    nori.setting_check_not_empty(ident_index)
+    nori.setting_check_list(
+        ident_index + (0, ),
+        ['node', 'fc', 'relation', 'field', 'title', 'label']
+    )
+
+    if ident[0] == 'node':
+        nori.setting_check_len(ident_index, 3, 3)
+        if kv == 'k':
+            nori.setting_check_type(
+                ident_index + (1, ),
+                nori.core.STRING_TYPES
+            )
+        else:
+            nori.setting_check_type(
+                ident_index + (1, ),
+                nori.core.STRING_TYPES + (nori.core.NONE_TYPE, )
+            )
+        nori.setting_check_list(ident_index + (2, ), ['id', 'title'])
+    elif ident[0] == 'fc':
+        nori.setting_check_len(ident_index, 3, 3)
+        nori.setting_check_not_blank(ident_index + (1, ))
+        nori.setting_check_list(ident_index + (2, ), ['id', 'label'])
+    elif ident[0] == 'relation':
+        nori.setting_check_len(ident_index, 2, 2)
+        nori.setting_check_not_blank(ident_index + (1, ))
+    elif ident[0] == 'field':
+        nori.setting_check_len(ident_index, 2, 2)
+        nori.setting_check_not_blank(ident_index + (1, ))
+    elif ident[0] == 'title':
+        nori.setting_check_len(ident_index, 1, 1)
+    elif ident[0] == 'label':
+        nori.setting_check_len(ident_index, 1, 1)
+
+    if ident[0] != 'relation':
+        nori.setting_check_not_blank(data_type_index)
 
 
 def get_drupal_chain_type(key_cv=None, value_cv=None, key_entities=None,
@@ -687,69 +754,6 @@ def validate_drupal_chain(key_index, key_cv, value_index, value_cv):
                       'one of the currently allowed types; exiting.' .
                       format(nori.setting_walk(key_index[0:-1])[2]),
                       nori.core.exitvals['startup']['num'])
-
-
-def validate_drupal_cv(cv_index, cv, kv):
-
-    """
-    Validate a single Drupal key_cv/value_cv entry.
-
-    Parameters:
-        cv_index: the index tuple of the entry in the templates setting
-        cv: the entry itself
-        kv: 'k' if this is entry is part of a key_cv sequence, or 'v' if
-            it's part of a value_cv sequence
-
-    Dependencies:
-        config settings: templates
-        modules: nori
-
-    """
-
-    ident_index = cv_index + (0, )
-    ident = cv[0]
-    data_type_index = cv_index + (1, )
-    data_type = cv[1]
-
-    nori.setting_check_type(cv_index, nori.core.CONTAINER_TYPES)
-    nori.setting_check_len(cv_index, 2, 3)
-
-    nori.setting_check_not_empty(ident_index)
-    nori.setting_check_list(
-        ident_index + (0, ),
-        ['node', 'fc', 'relation', 'field', 'title', 'label']
-    )
-
-    if ident[0] == 'node':
-        nori.setting_check_len(ident_index, 3, 3)
-        if kv == 'k':
-            nori.setting_check_type(
-                ident_index + (1, ),
-                nori.core.STRING_TYPES
-            )
-        else:
-            nori.setting_check_type(
-                ident_index + (1, ),
-                nori.core.STRING_TYPES + (nori.core.NONE_TYPE, )
-            )
-        nori.setting_check_list(ident_index + (2, ), ['id', 'title'])
-    elif ident[0] == 'fc':
-        nori.setting_check_len(ident_index, 3, 3)
-        nori.setting_check_not_blank(ident_index + (1, ))
-        nori.setting_check_list(ident_index + (2, ), ['id', 'label'])
-    elif ident[0] == 'relation':
-        nori.setting_check_len(ident_index, 2, 2)
-        nori.setting_check_not_blank(ident_index + (1, ))
-    elif ident[0] == 'field':
-        nori.setting_check_len(ident_index, 2, 2)
-        nori.setting_check_not_blank(ident_index + (1, ))
-    elif ident[0] == 'title':
-        nori.setting_check_len(ident_index, 1, 1)
-    elif ident[0] == 'label':
-        nori.setting_check_len(ident_index, 1, 1)
-
-    if ident[0] != 'relation':
-        nori.setting_check_not_blank(data_type_index)
 
 
 def validate_config():
@@ -916,6 +920,10 @@ def validate_config():
                 nori.setting_check_file_read(('report_emails_sec', i))
 
 
+#####################
+# logging and output
+#####################
+
 class SMTPReportHandler(logging.handlers.SMTPHandler):
 
     """Override SMTPHandler to add diagnostics to the email."""
@@ -965,6 +973,15 @@ def init_reporting():
         email_reporter.addHandler(email_handler)
     # use the output logger for the report files (for now)
 
+
+###########################
+# database query functions
+###########################
+
+#
+# (listed in top-down order because the docstrings in the higher-level
+# functions explain what's going on)
+#
 
 def generic_db_query(db_obj=None, mode='read', tables='', key_cv=[],
                      value_cv=[], where_str=None, more_str=None,
@@ -1917,6 +1934,10 @@ def delete_drupal_rel():
     pass
 
 
+###########################
+# other database functions
+###########################
+
 def clear_drupal_cache(db_obj):
     """
     Clear all caches in a Drupal database.
@@ -1934,6 +1955,10 @@ def clear_drupal_cache(db_obj):
                 return False
     return True
 
+
+#####################################
+# key/value checks and manipulations
+#####################################
 
 def check_key_list_match(key_mode, key_list, key_cv, row):
     """
@@ -2057,6 +2082,10 @@ def key_value_copy(source_row, dest_key_cv, dest_value_cv):
             )
     return (new_dest_key_cv, new_dest_value_cv)
 
+
+##########################################
+# database-diff logging and manipulations
+##########################################
 
 def log_diff(template_index, exists_in_source, source_row, exists_in_dest,
              dest_row):
@@ -2226,6 +2255,72 @@ def do_diff_report():
     nori.core.output_logger.info('\n\n' + diff_report + '\n\n')
 
 
+##############
+# diff / sync
+##############
+
+#
+# note: 'source'/'s_' and 'dest'/'d_' below refer to the
+# actual source and destination DBs, after applying the value of
+# the 'reverse' setting
+#
+
+def do_sync(s_row, d_db, dest_func, dest_args, dest_kwargs,
+            dest_change_func, diff_k, diff_i):
+
+    """
+    Actually sync data to the destination database.
+
+    Parameters:
+        s_row: the source data, as returned from the query function
+        d_db: the database object for the destination DB
+        diff_k: the key of the diff list within diff_dict
+        diff_i: the index of the diff within the list indicated by
+                diff_k
+        see the template loop in run_mode_hook() for the rest, in which
+        they are copied from the templates setting
+
+    Dependencies:
+        functions: key_value_copy(), update_diff()
+        modules: copy, nori
+        Python: 2.0/3.2, for callable()
+
+    """
+
+    new_key_cv, new_value_cv = key_value_copy(
+        s_row, dest_kwargs['key_cv'], dest_kwargs['value_cv']
+    )
+    new_dest_kwargs = copy.copy(dest_kwargs)
+    new_dest_kwargs['key_cv'] = new_key_cv
+    new_dest_kwargs['value_cv'] = new_value_cv
+
+    nori.core.status_logger.info('Updating destination database...')
+    ret = dest_func(*dest_args, db_obj=d_db, mode='update',
+                    **new_dest_kwargs)
+    if ret:
+        update_diff(diff_k, diff_i)
+        callback_needed = True
+        nori.core.status_logger.info('Update complete.')
+    # DB code will handle errors
+    if not (dest_change_func and callable(dest_change_func)):
+        return ret
+
+    # template-level change callback
+    if not ret:
+        nori.core.status_logger.info(
+            'Skipping change callback for this template.'
+        )
+        return ret
+    nori.core.status_logger.info(
+        'Calling change callback for this template...'
+    )
+    ret = dest_change_func(template, s_row)
+    nori.core.status_logger.info(
+        'Callback complete.' if ret else 'Callback failed.'
+    )
+    return ret
+
+
 def run_mode_hook():
 
     """
@@ -2247,12 +2342,6 @@ def run_mode_hook():
         Python: 2.0/3.2, for callable()
 
     """
-
-    #
-    # note: 'source'/'s_' and 'dest'/'d_' below refer to the
-    # actual source and destination DBs, after applying the value of
-    # the 'reverse' setting
-    #
 
     # connect to DBs
     if not nori.core.cfg['reverse']:
@@ -2337,44 +2426,6 @@ def run_mode_hook():
             # script to exit before this, as currently written
             break
 
-        # encapsulate the sync so this is less messy to read
-        def do_sync():
-
-            """Actually sync data to the destination database."""
-
-            new_key_cv, new_value_cv = key_value_copy(
-                s_row, dest_kwargs['key_cv'], dest_kwargs['value_cv']
-            )
-            new_dest_kwargs = copy.copy(dest_kwargs)
-            new_dest_kwargs['key_cv'] = new_key_cv
-            new_dest_kwargs['value_cv'] = new_value_cv
-
-            nori.core.status_logger.info('Updating destination database...')
-            ret = dest_func(*dest_args, db_obj=destdb, mode='update',
-                            **new_dest_kwargs)
-            if ret:
-                update_diff(diff_k, diff_i)
-                callback_needed = True
-                nori.core.status_logger.info('Update complete.')
-            # DB code will handle errors
-            if not (dest_change_func and callable(dest_change_func)):
-                return ret
-
-            # template-level change callback
-            if not ret:
-                nori.core.status_logger.info(
-                    'Skipping change callback for this template.'
-                )
-                return ret
-            nori.core.status_logger.info(
-                'Calling change callback for this template...'
-            )
-            ret = dest_change_func(template, s_row)
-            nori.core.status_logger.info(
-                'Callback complete.' if ret else 'Callback failed.'
-            )
-            return ret
-
         # diff/sync and check for missing rows in the destination DB
         for s_row in s_rows:
             # apply transform
@@ -2406,7 +2457,9 @@ def run_mode_hook():
                         diff_k, diff_i = log_diff(t_index, True, s_row,
                                                   True, d_row)
                         if nori.core.cfg['action'] == 'sync':
-                            do_sync()
+                            do_sync(s_row, d_db, dest_func, dest_args,
+                                    dest_kwargs, dest_change_func, diff_k,
+                                    diff_i)
                     break
 
             # row not found
