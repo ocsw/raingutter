@@ -2509,6 +2509,7 @@ def run_mode_hook():
     # template loop
     for t_index, template in enumerate(nori.core.cfg['templates']):
         # get settings
+        t_name = template[T_NAME_IDX]
         t_multiple = template[T_MULTIPLE_IDX]
         if not nori.core.cfg['reverse']:
             source_type = template[T_S_TYPE_IDX]
@@ -2531,10 +2532,10 @@ def run_mode_hook():
 
         # filter by template
         if (nori.cfg['template_mode'] == 'include' and
-              name not in nori.cfg['template_list']):
+              t_name not in nori.cfg['template_list']):
             continue
         elif (nori.cfg['template_mode'] == 'exclude' and
-                name in nori.cfg['template_list']):
+              t_name in nori.cfg['template_list']):
             continue
 
         # handle unspecified functions
