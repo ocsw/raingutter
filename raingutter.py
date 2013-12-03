@@ -772,6 +772,7 @@ def validate_config():
                          report_emails_to, report_emails_subject,
                          report_emails_host, report_emails_cred,
                          report_emails_sec
+        globals: T_*
         modules: nori
 
     """
@@ -2031,6 +2032,7 @@ def key_filter(template_index, key_cv, row):
 
     Dependencies:
         config settings: templates, key_mode, key_list
+        globals: T_KEY_MODE_IDX, T_KEY_LIST_IDX
         functions: check_key_list_match()
         modules: nori
 
@@ -2109,7 +2111,8 @@ def log_diff(template_index, exists_in_source, source_row, exists_in_dest,
                   query function
     Dependencies:
         config settings: templates, report_order
-        globals: diff_dict
+        globals: diff_dict, T_S_QUERY_ARGS_IDX, T_D_QUERY_ARGS_IDX,
+                 T_NAME_IDX
         modules: nori
     """
     template = nori.core.cfg['templates'][template_index]
@@ -2175,7 +2178,7 @@ def render_diff_report():
     Returns a string.
     Dependencies:
         config settings: action, templates, report_order
-        globals: diff_dict
+        globals: diff_dict, T_NAME_IDX, T_S_QUERY_ARGS_IDX
         modules: nori
     """
     if nori.core.cfg['action'] == 'diff':
