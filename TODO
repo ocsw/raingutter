@@ -9,8 +9,6 @@ drupal read:
 configs for OCS fields
 testing
 
-store chain_type?
-
 nori import
 
 refs to rg funcs from config
