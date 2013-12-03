@@ -2265,28 +2265,46 @@ def do_diff_report():
 # the 'reverse' setting
 #
 
-def do_sync(s_row, d_db, dest_func, dest_args, dest_kwargs,
-            dest_change_func, diff_k, diff_i):
+def do_sync(t_index, s_row, diff_k, diff_i):
 
     """
     Actually sync data to the destination database.
 
+    Returns a tuple: (success?, global_destdb_callback_needed?).
+
     Parameters:
+        t_index: the index of the relevant template in the templates
+                 setting
         s_row: the source data, as returned from the query function
-        d_db: the database object for the destination DB
         diff_k: the key of the diff list within diff_dict
         diff_i: the index of the diff within the list indicated by
                 diff_k
-        see the template loop in run_mode_hook() for the rest, in which
-        they are copied from the templates setting
 
     Dependencies:
+        config settings: reverse, templates
+        globals: (some of) T_*
         functions: key_value_copy(), update_diff()
         modules: copy, nori
         Python: 2.0/3.2, for callable()
 
     """
 
+    # get settings and resources
+    template = nori.core.cfg['templates'][t_index]
+    if not nori.core.cfg['reverse']:
+        dest_func = template[T_D_QUERY_FUNC_IDX]
+        dest_args = template[T_D_QUERY_ARGS_IDX][0]
+        dest_kwargs = template[T_D_QUERY_ARGS_IDX][1]
+        dest_change_func = template[T_D_CHANGE_FUNC_IDX]
+        d_db = destdb
+    else:
+        dest_func = template[T_S_QUERY_FUNC_IDX]
+        dest_args = template[T_S_QUERY_ARGS_IDX][0]
+        dest_kwargs = template[T_S_QUERY_ARGS_IDX][1]
+        dest_change_func = template[T_S_CHANGE_FUNC_IDX]
+        d_db = sourcedb
+
+    # set up the new cv sequences
     new_key_cv, new_value_cv = key_value_copy(
         s_row, dest_kwargs['key_cv'], dest_kwargs['value_cv']
     )
@@ -2294,23 +2312,25 @@ def do_sync(s_row, d_db, dest_func, dest_args, dest_kwargs,
     new_dest_kwargs['key_cv'] = new_key_cv
     new_dest_kwargs['value_cv'] = new_value_cv
 
+    # do the update
     nori.core.status_logger.info('Updating destination database...')
+    global_callback_needed = False
     ret = dest_func(*dest_args, db_obj=d_db, mode='update',
                     **new_dest_kwargs)
     if ret:
         update_diff(diff_k, diff_i)
-        callback_needed = True
+        global_callback_needed = True
         nori.core.status_logger.info('Update complete.')
     # DB code will handle errors
     if not (dest_change_func and callable(dest_change_func)):
-        return ret
+        return (ret, global_callback_needed)
 
     # template-level change callback
     if not ret:
         nori.core.status_logger.info(
             'Skipping change callback for this template.'
         )
-        return ret
+        return (ret, global_callback_needed)
     nori.core.status_logger.info(
         'Calling change callback for this template...'
     )
@@ -2318,7 +2338,127 @@ def do_sync(s_row, d_db, dest_func, dest_args, dest_kwargs,
     nori.core.status_logger.info(
         'Callback complete.' if ret else 'Callback failed.'
     )
-    return ret
+    return (ret, global_callback_needed)
+
+
+def do_diff_sync(t_index, s_rows, d_rows):
+
+    """
+    Diff, and if necessary sync, sets of rows from the two databases.
+
+    Returns a boolean indicating if the global destdb callback is
+    needed.
+
+    Parameters:
+        t_index: the index of the relevant template in the templates
+                 setting
+        s_rows: a sequence of row tuples from the source database's
+                query function
+        d_rows: a sequence of row tuples from the destination database's
+                query function
+
+    Dependencies:
+        config settings: action, reverse, bidir, templates
+        globals: (some of) T_*
+        functions: key_filter(), log_diff(), do_sync()
+        modules: nori
+        Python: 2.0/3.2, for callable()
+
+    """
+
+    # get settings
+    template = nori.core.cfg['templates'][t_index]
+    if not nori.core.cfg['reverse']:
+        source_kwargs = template[T_S_QUERY_ARGS_IDX][1]
+        to_dest_func = template[T_TO_D_FUNC_IDX]
+        dest_kwargs = template[T_D_QUERY_ARGS_IDX][1]
+        to_source_func = template[T_TO_S_FUNC_IDX]
+    else:
+        source_kwargs = template[T_D_QUERY_ARGS_IDX][1]
+        to_dest_func = template[T_TO_S_FUNC_IDX]
+        dest_kwargs = template[T_S_QUERY_ARGS_IDX][1]
+        to_source_func = template[T_TO_D_FUNC_IDX]
+
+    # diff/sync and check for missing rows in the destination DB
+    global_callback_needed = False
+    for s_row in s_rows:
+        # apply transform
+        if to_dest_func and callable(to_dest_func):
+            s_row = to_dest_func(template, s_row)
+
+        # filter by keys
+        if not key_filter(t_index, source_kwargs['key_cv'], s_row):
+            continue
+
+        found = False
+        s_keys = s_row[0:len(source_kwargs['key_cv'])]
+        s_vals = s_row[len(source_kwargs['key_cv']):]
+        for d_row in d_rows:
+            # apply transform
+            if to_source_func and callable(to_source_func):
+                d_row = to_source_func(template, d_row)
+
+            # filter by keys
+            if not key_filter(t_index, dest_kwargs['key_cv'], d_row):
+                continue
+
+            # the actual work
+            d_keys = d_row[0:len(dest_kwargs['key_cv'])]
+            d_vals = d_row[len(dest_kwargs['key_cv']):]
+            if d_keys == s_keys:
+                found = True
+                if d_vals != s_vals:
+                    diff_k, diff_i = log_diff(t_index, True, s_row,
+                                              True, d_row)
+                    if nori.core.cfg['action'] == 'sync':
+                        ret = do_sync(t_index, s_row, diff_k, diff_i)
+                        # ignore ret[0] for now; errors will cause the
+                        # script to exit before this, as currently
+                        # written
+                        if ret[1]:
+                            global_callback_needed = True
+                break
+
+        # row not found
+        if not found:
+            log_diff(t_index, True, s_row, False, None)
+
+    # check for missing rows in the source DB
+    if nori.core.cfg['bidir']:
+        for d_row in d_rows:
+            # apply transform
+            if to_source_func and callable(to_source_func):
+                d_row = to_source_func(template, d_row)
+
+            # filter by keys
+            if not key_filter(t_index, dest_kwargs['key_cv'], d_row):
+                continue
+
+            found = False
+            d_keys = d_row[0:len(dest_kwargs['key_cv'])]
+            d_vals = d_row[len(dest_kwargs['key_cv']):]
+            for s_row in s_rows:
+                # apply transform
+                if to_dest_func and callable(to_dest_func):
+                    s_row = to_dest_func(template, s_row)
+
+                # filter by keys
+                if not key_filter(t_index, source_kwargs['key_cv'],
+                                  s_row):
+                    continue
+
+                # the actual row check
+                s_keys = s_row[0:len(source_kwargs['key_cv'])]
+                s_vals = s_row[len(source_kwargs['key_cv']):]
+                if s_keys == d_keys:
+                    found = True
+                    break
+
+            # row not found
+            if not found:
+                log_diff(t_index, False, None, True, d_row)
+
+    return global_callback_needed
 
 
 def run_mode_hook():
@@ -2327,18 +2467,16 @@ def run_mode_hook():
     Do the actual work.
 
     Dependencies:
-        config settings: action, reverse, bidir, templates,
-                         template_mode, template_list,
-                         sourcedb_change_callback,
+        config settings: reverse, templates, template_mode,
+                         template_list, sourcedb_change_callback,
                          sourcedb_change_callback_args,
                          destdb_change_callback,
                          destdb_change_callback_args
-        globals: diff_dict, sourcedb, destdb
-        functions: generic_db_query(), drupal_db_query(), key_filter(),
-                   key_value_copy(), log_diff(), update_diff(),
-                   do_diff_report(), (functions in templates), (global
-                   callback functions)
-        modules: copy, nori
+        globals: (some of) T_*, diff_dict, sourcedb, destdb
+        functions: generic_db_query(), drupal_db_query(),
+                   do_diff_sync(), do_diff_report(), (functions in
+                   templates), (global callback functions)
+        modules: nori
         Python: 2.0/3.2, for callable()
 
     """
@@ -2357,38 +2495,26 @@ def run_mode_hook():
 
     # template loop
     for t_index, template in enumerate(nori.core.cfg['templates']):
-        t_name = template[T_NAME_IDX]
+        # get settings
         t_multiple = template[T_MULTIPLE_IDX]
         if not nori.core.cfg['reverse']:
             source_type = template[T_S_TYPE_IDX]
             source_func = template[T_S_QUERY_FUNC_IDX]
             source_args = template[T_S_QUERY_ARGS_IDX][0]
             source_kwargs = template[T_S_QUERY_ARGS_IDX][1]
-            to_dest_func = template[T_TO_D_FUNC_IDX]
-            source_change_func = template[T_S_CHANGE_FUNC_IDX]
             dest_type = template[T_D_TYPE_IDX]
             dest_func = template[T_D_QUERY_FUNC_IDX]
             dest_args = template[T_D_QUERY_ARGS_IDX][0]
             dest_kwargs = template[T_D_QUERY_ARGS_IDX][1]
-            to_source_func = template[T_TO_S_FUNC_IDX]
-            dest_change_func = template[T_D_CHANGE_FUNC_IDX]
-
         else:
             source_type = template[T_D_TYPE_IDX]
             source_func = template[T_D_QUERY_FUNC_IDX]
             source_args = template[T_D_QUERY_ARGS_IDX][0]
             source_kwargs = template[T_D_QUERY_ARGS_IDX][1]
-            to_dest_func = template[T_TO_S_FUNC_IDX]
-            source_change_func = template[T_D_CHANGE_FUNC_IDX]
             dest_type = template[T_S_TYPE_IDX]
             dest_func = template[T_S_QUERY_FUNC_IDX]
             dest_args = template[T_S_QUERY_ARGS_IDX][0]
             dest_kwargs = template[T_S_QUERY_ARGS_IDX][1]
-            to_source_func = template[T_TO_D_FUNC_IDX]
-            dest_change_func = template[T_S_CHANGE_FUNC_IDX]
-        t_key_mode = template[T_KEY_MODE_IDX]
-        t_key_list = template[T_KEY_LIST_IDX]
-        callback_needed = False
 
         # filter by template
         if (nori.cfg['template_mode'] == 'include' and
@@ -2426,87 +2552,27 @@ def run_mode_hook():
             # script to exit before this, as currently written
             break
 
-        # diff/sync and check for missing rows in the destination DB
+
+
+        global_callback_needed = False
+        row_group = []
+        current_keys = s_rows[0][0:len(source_kwargs['key_cv'])]
         for s_row in s_rows:
-            # apply transform
-            if to_dest_func and callable(to_dest_func):
-                s_row = to_dest_func(template, s_row)
+            if current_keys == s_row[0:len(source_kwargs['key_cv'])]:
+                row_group.append(s_row)
+            else:
+                next_keys = s_row[0:len(source_kwargs['key_cv'])]
+                if do_diff_sync(t_index, s_row_group, d_row_group):
+                    global_callback_needed = True
 
-            # filter by keys
-            if not key_filter(t_index, source_kwargs['key_cv'], s_row):
-                continue
 
-            found = False
-            s_keys = s_row[0:len(source_kwargs['key_cv'])]
-            s_vals = s_row[len(source_kwargs['key_cv']):]
-            for d_row in d_rows:
-                # apply transform
-                if to_source_func and callable(to_source_func):
-                    d_row = to_source_func(template, d_row)
-
-                # filter by keys
-                if not key_filter(t_index, dest_kwargs['key_cv'], d_row):
-                    continue
-
-                # the actual work
-                d_keys = d_row[0:len(dest_kwargs['key_cv'])]
-                d_vals = d_row[len(dest_kwargs['key_cv']):]
-                if d_keys == s_keys:
-                    found = True
-                    if d_vals != s_vals:
-                        diff_k, diff_i = log_diff(t_index, True, s_row,
-                                                  True, d_row)
-                        if nori.core.cfg['action'] == 'sync':
-                            do_sync(s_row, d_db, dest_func, dest_args,
-                                    dest_kwargs, dest_change_func, diff_k,
-                                    diff_i)
-                    break
-
-            # row not found
-            if not found:
-                log_diff(t_index, True, s_row, False, None)
-
-        # check for missing rows in the source DB
-        if nori.core.cfg['bidir']:
-            for d_row in d_rows:
-                # apply transform
-                if to_source_func and callable(to_source_func):
-                    d_row = to_source_func(template, d_row)
-
-                # filter by keys
-                if not key_filter(t_index, dest_kwargs['key_cv'], d_row):
-                    continue
-
-                found = False
-                d_keys = d_row[0:len(dest_kwargs['key_cv'])]
-                d_vals = d_row[len(dest_kwargs['key_cv']):]
-                for s_row in s_rows:
-                    # apply transform
-                    if to_dest_func and callable(to_dest_func):
-                        s_row = to_dest_func(template, s_row)
-
-                    # filter by keys
-                    if not key_filter(t_index, source_kwargs['key_cv'],
-                                      s_row):
-                        continue
-
-                    # the actual row check
-                    s_keys = s_row[0:len(source_kwargs['key_cv'])]
-                    s_vals = s_row[len(source_kwargs['key_cv']):]
-                    if s_keys == d_keys:
-                        found = True
-                        break
-
-                # row not found
-                if not found:
-                    log_diff(t_index, False, None, True, d_row)
 
         #
         # end of template loop
         #
 
     # global change callback
-    if callback_needed:
+    if global_callback_needed:
         if not nori.core.cfg['reverse']:
             cb = nori.core.cfg['destdb_change_callback']
             if cb and callable(cb):
