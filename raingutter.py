@@ -2419,7 +2419,7 @@ def run_mode_hook():
             break
 
         # get the destination data
-        d_rows = dest_func(*dest_args, db_obj=destdb, mode='read',
+        d_rows = dest_func(*dest_args, db_obj=d_db, mode='read',
                            **dest_kwargs)
         if d_rows is None:
             # shouldn't actually happen; errors will cause the
