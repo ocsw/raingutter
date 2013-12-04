@@ -1358,7 +1358,7 @@ def drupal_db_read(db_obj, key_cv, value_cv):
         see generic_drupal_db_query()
 
     Dependencies:
-        functions: get_drupal_db_read_query(), generic_db_generator()
+        functions: get_drupal_db_read_query()
         modules: sys, nori
 
     """
