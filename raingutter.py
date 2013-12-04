@@ -1064,7 +1064,7 @@ Exiting.'''.format(*map(nori.pps, [db_obj, mode, tables, key_cv, value_cv,
                                    where_str, more_str, more_args,
                                    no_replicate]))
         )
-        sys.exit(nore.core.exitvals['internal']['num'])
+        sys.exit(nori.core.exitvals['internal']['num'])
 
     if mode == 'read':
         query_str, query_args = get_select_query(
@@ -1334,7 +1334,7 @@ drupal_db_query(db_obj={0},
 Exiting.'''.format(*map(nori.pps, [db_obj, mode, key_cv, value_cv,
                                    no_replicate]))
         )
-        sys.exit(nore.core.exitvals['internal']['num'])
+        sys.exit(nori.core.exitvals['internal']['num'])
 
     if mode == 'read':
         return drupal_db_read(db_obj, key_cv, value_cv)
@@ -1376,7 +1376,7 @@ drupal_db_read(db_obj={0},
 
 Exiting.'''.format(*map(nori.pps, [db_obj, key_cv, value_cv]))
         )
-        sys.exit(nore.core.exitvals['internal']['num'])
+        sys.exit(nori.core.exitvals['internal']['num'])
 
     if not db_obj.execute(None, query_str, query_args, has_results=True):
         return None
@@ -2095,7 +2095,7 @@ check_key_list_match(key_mode={0},
 
 Exiting.'''.format(*map(nori.pps, [key_mode, key_list, key_cv, row]))
                 )
-                sys.exit(nore.core.exitvals['internal']['num'])
+                sys.exit(nori.core.exitvals['internal']['num'])
             for i, match_val in enumerate(k_match):
                 if row[i] != match_val:
                     break
