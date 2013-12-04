@@ -2413,9 +2413,28 @@ def drupal_db_insert(db_obj, key_cv, value_cv, no_replicate=False):
         see generic_drupal_db_query()
 
     Dependencies:
+        functions: get_drupal_db_insert_query()
+        modules: sys, nori
 
     """
-    pass
+
+    query_str, query_args = get_drupal_db_insert_query(key_cv, value_cv)
+
+    if query_str is None and query_args is None:
+        nori.core.email_logger.error(
+'''Internal Error: invalid field list supplied in call to
+drupal_db_insert(); call was (in expanded notation):
+
+drupal_db_insert(db_obj={0},
+                 key_cv={1},
+                 value_cv={2},
+                 no_replicate={3})
+
+Exiting.'''.format(*map(nori.pps, [db_obj, key_cv, value_cv, no_replicate]))
+        )
+        sys.exit(nori.core.exitvals['internal']['num'])
+
+    return db_obj.execute(None, query_str, query_args, has_results=False)
 
 
 def get_drupal_db_insert_query(key_cv, value_cv):
@@ -2431,27 +2450,16 @@ def get_drupal_db_insert_query(key_cv, value_cv):
     Dependencies:
         functions: get_drupal_chain_type()
     """
-    pass
 
+    if len(value_cv) != 1:
+        return (None, None)
 
-def create_drupal_fc():
-    pass
+    chain_type = get_drupal_chain_type(key_cv, value_cv)
+    if not chain_type:
+        return (None, None)
 
+    
 
-def delete_drupal_fc():
-    pass
-
-
-def create_drupal_rel():
-    pass
-
-
-def update_drupal_rel():
-    pass
-
-
-def delete_drupal_rel():
-    pass
 
 
 ###########################
