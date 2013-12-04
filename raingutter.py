@@ -2219,14 +2219,21 @@ def render_diff_report():
                 exists_in_dest = diff_t[2]
                 dest_row = diff_t[3]
                 has_been_changed = diff_t[4]
+                if exists_in_source:
+                    source_str = nori.pps(source_row)
+                elif exists_in_source is None:
+                    source_str = '[no key match in source database]'
+                else:
+                    source_str = '[no match in source database]'
+                if exists_in_dest:
+                    dest_str = nori.pps(dest_row)
+                elif exists_in_dest is None:
+                    dest_str = '[no key match in destination database]'
+                else:
+                    dest_str = '[no match in destination database]'
                 diff_report += (
                     'Source: {0}\nDest: {1}\nStatus: {2}changed\n\n' .
-                    format(nori.pps(source_row)
-                               if exists_in_source
-                               else '[no match in source database]',
-                           nori.pps(dest_row)
-                               if exists_in_dest
-                               else '[no match in destination database]',
+                    format(source_str, dest_str,
                            'un' if not has_been_changed else '')
                 )
             diff_report += '\n'
@@ -2245,16 +2252,22 @@ def render_diff_report():
                 has_been_changed = diff_t[5]
                 template = nori.core.cfg['templates'][template_index]
                 num_keys = len(template[T_S_QUERY_ARGS_IDX][1]['key_cv'])
+                if exists_in_source:
+                    source_str = nori.pps(source_row[num_keys:])
+                elif exists_in_source is None:
+                    source_str = '[no key match in source database]'
+                else:
+                    source_str = '[no match in source database]'
+                if exists_in_dest:
+                    dest_str = nori.pps(dest_row[num_keys:])
+                elif exists_in_dest is None:
+                    dest_str = '[no key match in destination database]'
+                else:
+                    dest_str = '[no match in destination database]'
                 diff_report += (
                     'Template: {0}\nSource: {1}\nDest: {2}\n'
                     'Status: {3}changed\n\n' .
-                    format(template[T_NAME_IDX],
-                           nori.pps(source_row[num_keys:])
-                               if exists_in_source
-                               else '[no match in source database]',
-                           nori.pps(dest_row[num_keys:])
-                               if exists_in_dest
-                               else '[no match in destination database]',
+                    format(template[T_NAME_IDX], source_str, dest_str,
                            'un' if not has_been_changed else '')
                 )
             diff_report += '\n'
@@ -2486,14 +2499,14 @@ def run_mode_hook():
     Do the actual work.
 
     Dependencies:
-        config settings: reverse, templates, template_mode,
+        config settings: reverse, bidir, templates, template_mode,
                          template_list, sourcedb_change_callback,
                          sourcedb_change_callback_args,
                          destdb_change_callback,
                          destdb_change_callback_args
         globals: (some of) T_*, diff_dict, sourcedb, destdb
-        functions: generic_db_query(), drupal_db_query(),
-                   do_diff_sync(), do_diff_report(), (functions in
+        functions: generic_db_query(), drupal_db_query(), log_diff(),
+                   do_diff_report(), do_diff_sync(), (functions in
                    templates), (global callback functions)
         modules: nori
         Python: 2.0/3.2, for callable()
@@ -2593,16 +2606,23 @@ def run_mode_hook():
                 d_row_groups[d_row[0:d_num_keys]].append(d_row)
 
             # dispatch by group
+            d_keys_found = []
             for s_keys in s_row_groups:
-                if s_keys not in d_row_groups:
-                    for s_row in s_row_groups[s_keys]:
-                        log_diff(t_index, True, s_row, None, None)
-                else:
+                if s_keys in d_row_groups:
+                    d_keys_found.append(s_keys)
                     if do_diff_sync(t_index, s_row_groups[s_keys],
                                     d_row_groups[s_keys]):
                         global_callback_needed = True
-#TODO also d -> s diff
-
+                else:
+                    # not even a key match
+                    for s_row in s_row_groups[s_keys]:
+                        log_diff(t_index, True, s_row, None, None)
+            if nori.core.cfg['bidir']:
+                for d_keys in d_row_groups:
+                    if d_keys not in d_keys_found:
+                        # not even a key match
+                        for d_row in d_row_groups[d_keys]:
+                            log_diff(t_index, None, None, True, d_row)
 
         #
         # end of template loop
