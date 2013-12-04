@@ -1,17 +1,16 @@
 TODO
 
-multiples
+***len of cv != ken after transform
+
 updates
-inserts, incl in do_sync
-reports - None diffs
+inserts
+    multiples: only one target?  only one table?
 drupal read:
     add node -> title, fc -> label, etc.
     inner joins for relations, etc?
     OR IS NULL cases
 configs for OCS fields
 testing
-
-***len of cv != ken after transform
 
 nori import
 
