@@ -2013,9 +2013,28 @@ def drupal_db_update(db_obj, key_cv, value_cv, no_replicate=False):
         see generic_drupal_db_query()
 
     Dependencies:
+        functions: get_drupal_db_update_query()
+        modules: sys, nori
 
     """
-    pass
+
+    query_str, query_args = get_drupal_db_update_query(key_cv, value_cv)
+
+    if query_str is None and query_args is None:
+        nori.core.email_logger.error(
+'''Internal Error: invalid field list supplied in call to
+drupal_db_update(); call was (in expanded notation):
+
+drupal_db_update(db_obj={0},
+                 key_cv={1},
+                 value_cv={2},
+                 no_replicate={3})
+
+Exiting.'''.format(*map(nori.pps, [db_obj, key_cv, value_cv, no_replicate]))
+        )
+        sys.exit(nori.core.exitvals['internal']['num'])
+
+    return db_obj.execute(None, query_str, query_args, has_results=False)
 
 
 def get_drupal_db_update_query(key_cv, value_cv):
@@ -2023,13 +2042,364 @@ def get_drupal_db_update_query(key_cv, value_cv):
     """
     Get the query string and argument list for a Drupal DB update.
 
+    The value_cv argument may only have one element.
+
     Parameters:
         see generic_drupal_db_query()
 
     Dependencies:
         functions: get_drupal_chain_type()
     """
-    pass
+
+    if len(value_cv) != 1:
+        return (None, None)
+
+    chain_type = get_drupal_chain_type(key_cv, value_cv)
+    if not chain_type:
+        return (None, None)
+
+    #
+    # node -> field (including term references)
+    #
+    if chain_type == 'n-f':
+        # node details
+        node_cv = key_cv[0]
+        node_ident = node_cv[0]
+        node_value_type = node_cv[1]
+        node_value = node_cv[2]
+        node_type = node_ident[1]
+        node_id_type = node_ident[2]
+
+        # handle node ID types
+        if node_id_type == 'id':
+            key_column = 'node.nid'
+        elif node_id_type == 'title':
+            key_column = 'node.title'
+
+        # field details
+        field_cv = value_cv[0]
+        field_ident = field_cv[0]
+        field_value_type = field_cv[1]
+        field_value = field_cv[2]
+        field_name = field_ident[1]
+
+        # handle term reference
+        if field_value_type.startswith('term: '):
+            term_join = (
+                'LEFT JOIN taxonomy_term_data AS t\n'
+                'ON t.name = %s'
+            )
+            value_str = 't.tid'
+        else:
+            term_join = ''
+            value_str = '%s'
+
+        # query string and arguments
+        query_str = (
+'''
+UPDATE node
+LEFT JOIN field_data_field_{0} AS f
+ON f.entity_id = node.nid
+AND f.revision_id = node.vid
+{1}
+SET f.field_{0}_value = {2}
+WHERE (node.vid IN
+       (SELECT max(vid)
+        FROM node
+        GROUP BY nid))
+AND node.type = %s
+AND {3} = %s
+AND (f.deleted = 0 OR f.deleted IS NULL)
+''' .
+            format(field_name,
+                   term_join,
+                   value_str,
+                   key_column)
+        )
+        query_args = [field_value, node_type, node_value]
+
+        return (query_str.strip(), query_args)
+
+    #
+    # node -> relation -> node
+    #
+    if chain_type == 'n-r-n':
+        # key-node details
+        k_node_cv = key_cv[0]
+        k_node_ident = k_node_cv[0]
+        k_node_value_type = k_node_cv[1]
+        k_node_value = k_node_cv[2]
+        k_node_type = k_node_ident[1]
+        k_node_id_type = k_node_ident[2]
+
+        # handle key-node ID types
+        if k_node_id_type == 'id':
+            key_column = 'k_node.nid'
+        elif k_node_id_type == 'title':
+            key_column = 'k_node.title'
+
+        # relation details
+        rel_cv = key_cv[1]
+        rel_ident = rel_cv[0]
+        rel_type = rel_ident[1]
+
+        # value-node details
+        v_node_cv = value_cv[0]
+        v_node_ident = v_node_cv[0]
+        v_node_value_type = v_node_cv[1]
+        v_node_value = v_node_cv[2]
+        v_node_type = v_node_ident[1]
+        v_node_id_type = v_node_ident[2]
+
+        # handle value-node ID types
+        if v_node_id_type == 'id':
+            value_column = 'v_node.nid'
+        elif v_node_id_type == 'title':
+            value_column = 'v_node.title'
+
+        # query string and arguments
+        query_str = (
+'''
+UPDATE node AS k_node
+LEFT JOIN field_data_endpoints AS e1
+          ON e1.endpoints_entity_id = k_node.nid
+LEFT JOIN field_data_endpoints AS e2
+          ON e2.entity_id = e1.entity_id
+          AND e2.revision_id = e1.revision_id
+          AND e2.endpoints_r_index > e1.endpoints_r_index
+LEFT JOIN node AS v_node
+SET e2.endpoints_entity_id = v_node.nid
+WHERE (k_node.vid IN
+       (SELECT max(vid)
+        FROM node
+        GROUP BY nid))
+AND k_node.type = %s
+AND {0} = %s
+AND (e1.revision_id IN
+     (SELECT max(revision_id)
+      FROM field_data_endpoints
+      GROUP BY entity_id))
+AND e1.entity_type = 'relation'
+AND e1.bundle = %s
+AND e1.endpoints_entity_type = 'node'
+AND (e1.deleted = 0 OR e1.deleted IS NULL)
+AND e2.endpoints_entity_type = 'node'
+AND (e2.deleted = 0 OR e2.deleted IS NULL)
+AND (v_node.vid IN
+     (SELECT max(vid)
+      FROM node
+      GROUP BY nid))
+AND v_node.type = %s
+AND {1} = %s
+''' .
+            format(key_column,
+                   value_column)
+        )
+        query_args = [k_node_type, k_node_value, rel_type, v_node_type,
+                      v_node_value]
+
+        return (query_str.strip(), query_args)
+
+    #
+    # node -> relation & node -> relation_field (incl. term refs)
+    #
+    if chain_type == 'n-rn-rf':
+        # node1 details
+        node1_cv = key_cv[0]
+        node1_ident = node1_cv[0]
+        node1_value_type = node1_cv[1]
+        node1_value = node1_cv[2]
+        node1_type = node1_ident[1]
+        node1_id_type = node1_ident[2]
+
+        # handle node1 ID types
+        if node1_id_type == 'id':
+            key_column_1 = 'node1.nid'
+        elif node1_id_type == 'title':
+            key_column_1 = 'node1.title'
+
+        # relation details
+        rel_cv = key_cv[1]
+        rel_ident = rel_cv[0]
+        rel_type = rel_ident[1]
+
+        # node2 details
+        node2_cv = key_cv[0]
+        node2_ident = node2_cv[0]
+        node2_value_type = node2_cv[1]
+        node2_value = node2_cv[2]
+        node2_type = node2_ident[1]
+        node2_id_type = node2_ident[2]
+
+        # handle node2 ID types
+        if node2_id_type == 'id':
+            key_column_2 = 'node2.nid'
+        elif node2_id_type == 'title':
+            key_column_2 = 'node2.title'
+
+        # field details
+        field_cv = value_cv[0]
+        field_ident = field_cv[0]
+        field_value_type = field_cv[1]
+        field_value = field_cv[2]
+        field_name = field_ident[1]
+
+        # handle term reference
+        if field_value_type.startswith('term: '):
+            term_join = (
+                'LEFT JOIN taxonomy_term_data AS t\n'
+                'ON t.name = %s'
+            )
+            value_str = 't.tid'
+        else:
+            term_join = ''
+            value_str = '%s'
+
+        # query string and arguments
+        query_str = (
+'''
+UPDATE node AS node1
+LEFT JOIN field_data_endpoints AS e1
+          ON e1.endpoints_entity_id = node1.nid
+LEFT JOIN field_data_endpoints AS e2
+          ON e2.entity_id = e1.entity_id
+          AND e2.revision_id = e1.revision_id
+          AND e2.endpoints_r_index > e1.endpoints_r_index
+LEFT JOIN node AS node2
+          ON node2.nid = e2.endpoints_entity_id
+LEFT JOIN field_data_field_{0} AS f
+ON f.entity_id = e2.entity_id
+AND f.revision_id = e2.revision_id
+{1}
+SET f.field_{0}_value = {2}
+WHERE (node1.vid IN
+       (SELECT max(vid)
+        FROM node
+        GROUP BY nid))
+AND node1.type = %s
+AND {3} = %s
+AND (e1.revision_id IN
+     (SELECT max(revision_id)
+      FROM field_data_endpoints
+      GROUP BY entity_id))
+AND e1.entity_type = 'relation'
+AND e1.bundle = %s
+AND e1.endpoints_entity_type = 'node'
+AND (e1.deleted = 0 OR e1.deleted IS NULL)
+AND e2.endpoints_entity_type = 'node'
+AND (e2.deleted = 0 OR e2.deleted IS NULL)
+AND (node2.vid IN
+     (SELECT max(vid)
+      FROM node
+      GROUP BY nid))
+AND node2.type = %s
+AND {4} = %s
+AND f.entity_type = 'relation'
+AND (f.deleted = 0 OR f.deleted IS NULL)
+''' .
+            format(field_name,
+                   term_join,
+                   value_str,
+                   key_column_1,
+                   key_column_2)
+        )
+        query_args = [field_value, node1_type, node1_value, rel_type,
+                      node2_type, node2_value]
+
+        return (query_str.strip(), query_args)
+
+    #
+    # node -> fc -> field (including term references)
+    #
+    if chain_type == 'n-fc-f':
+        # node details
+        node_cv = key_cv[0]
+        node_ident = node_cv[0]
+        node_value_type = node_cv[1]
+        node_value = node_cv[2]
+        node_type = node_ident[1]
+        node_id_type = node_ident[2]
+
+        # handle node ID types
+        if node_id_type == 'id':
+            key_column_1 = 'node.nid'
+        elif node_id_type == 'title':
+            key_column_1 = 'node.title'
+
+        # fc details
+        fc_cv = key_cv[1]
+        fc_ident = fc_cv[0]
+        fc_value_type = fc_cv[1]
+        fc_value = fc_cv[2]
+        fc_type = fc_ident[1]
+        fc_id_type = fc_ident[2]
+
+        # handle fc ID types
+        if fc_id_type == 'id':
+            key_column_2 = 'fci.item_id'
+        elif fc_id_type == 'label':
+            key_column_2 = 'fci.label'
+
+        # field details
+        field_cv = value_cv[0]
+        field_ident = field_cv[0]
+        field_value_type = field_cv[1]
+        field_value = field_cv[2]
+        field_name = field_ident[1]
+
+        # handle term reference
+        if field_value_type.startswith('term: '):
+            term_join = (
+                'LEFT JOIN taxonomy_term_data AS t\n'
+                'ON t.name = %s'
+            )
+            value_str = 't.tid'
+        else:
+            term_join = ''
+            value_str = '%s'
+
+        # query string and arguments
+        query_str = (
+'''
+UPDATE node
+LEFT JOIN field_data_field_{0} AS fcf
+          ON fcf.entity_id = node.nid
+          AND fcf.revision_id = node.vid
+LEFT JOIN field_collection_item as fci
+          ON fci.item_id = fcf.field_{0}_value
+          AND fci.revision_id = fcf.field_{0}_revision_id
+LEFT JOIN field_data_field_{1} AS f
+ON f.entity_id = fci.item_id
+AND f.revision_id = fci.revision_id
+{2}
+SET f.field_{1}_value = {3}
+WHERE (node.vid IN
+       (SELECT max(vid)
+        FROM node
+        GROUP BY nid))
+AND node.type = %s
+AND {4} = %s'
+AND fcf.entity_type = 'node'
+AND (fcf.deleted = 0 OR fcf.deleted IS NULL)
+AND (fci.revision_id IN
+     (SELECT max(revision_id)
+      FROM field_collection_item
+      GROUP BY item_id))
+AND (fci.archived = 0 OR fci.archived IS NULL)
+AND {5} = %s
+AND f.entity_type = 'field_collection_item'
+AND (f.deleted = 0 OR f.deleted IS NULL)
+''' .
+            format(fc_type,
+                   field_name,
+                   term_join,
+                   value_str,
+                   key_column_1,
+                   key_column_2)
+        )
+        query_args = [field_value, node_type, node_value, fc_value]
+
+        return (query_str.strip(), query_args)
 
 
 def drupal_db_insert(db_obj, key_cv, value_cv, no_replicate=False):
