@@ -100,14 +100,19 @@ NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
 EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 '''
 
-# the database diffs; format is one of:
+#
+# This ordered dict contains the database diffs.  The format is one of:
 #     * rendered database 'key' strings ->
 #       lists of tuples in the format (template_index, exists_in_source,
 #       source_row, exists_in_dest, dest_row, has_been_changed)
 #     * indexes into the templates config setting ->
 #       lists of tuples in the format (exists_in_source, source_row,
 #       exists_in_dest, dest_row, has_been_changed)
-# depending on the report_order config setting
+# depending on the report_order config setting.
+# The exists_in_source / exists in dest elements are booleans, but can
+# also be None in the case of a multiple-rows template  with rows that
+# don't even have key matches (see the templates setting, below).
+#
 diff_dict = collections.OrderedDict()
 
 
@@ -214,6 +219,18 @@ The template name should be unique across all templates, although this is
 not enforced (template indexes are provided for disambiguation).  It is
 recommended not to include spaces in the names, for easier specification on
 the command line.
+
+If the multiple-rows-per-key flag is true, matching works differently.
+Instead of rows with the same keys matching, and their values being
+compared, rows only match if both the keys and the values are the same.
+
+This means that if there is no match for a row, it can either be because
+there is no key match at all, or no key-and-value match.  If a value is
+changed in one database, it will usually show up as the latter case; the
+script will see this as one non-matching row on each side.  The script
+will attempt to add the source row to the destination database, but it
+will not delete anything from the destination database; this must be
+done by other means.
 
 The DB query functions must take three keyword arguments in addition to any
 other *args and **kwargs:
@@ -2381,6 +2398,7 @@ def do_diff_sync(t_index, s_rows, d_rows):
 
     # get settings
     template = nori.core.cfg['templates'][t_index]
+    t_multiple = template[T_MULTIPLE_IDX]
     if not nori.core.cfg['reverse']:
         source_kwargs = template[T_S_QUERY_ARGS_IDX][1]
         to_dest_func = template[T_TO_D_FUNC_IDX]
@@ -2403,10 +2421,12 @@ def do_diff_sync(t_index, s_rows, d_rows):
         if not key_filter(t_index, source_kwargs['key_cv'], s_row):
             continue
 
-        found = False
+        s_found = False
         s_keys = s_row[0:len(source_kwargs['key_cv'])]
         s_vals = s_row[len(source_kwargs['key_cv']):]
-        for d_row in d_rows:
+        if nori.core.cfg['bidir']:
+            d_found = []
+        for di, d_row in enumerate(d_rows):
             # apply transform
             if to_source_func and callable(to_source_func):
                 d_row = to_source_func(template, d_row)
@@ -2418,57 +2438,43 @@ def do_diff_sync(t_index, s_rows, d_rows):
             # the actual work
             d_keys = d_row[0:len(dest_kwargs['key_cv'])]
             d_vals = d_row[len(dest_kwargs['key_cv']):]
-            if d_keys == s_keys:
-                found = True
-                if d_vals != s_vals:
-                    diff_k, diff_i = log_diff(t_index, True, s_row,
-                                              True, d_row)
-                    if nori.core.cfg['action'] == 'sync':
-                        ret = do_sync(t_index, s_row, diff_k, diff_i)
-                        # ignore ret[0] for now; errors will cause the
-                        # script to exit before this, as currently
-                        # written
-                        if ret[1]:
-                            global_callback_needed = True
-                break
+            if not t_multiple:
+                if d_keys == s_keys:
+                    s_found = True
+                    if nori.core.cfg['bidir']:
+                        d_found.append(di)
+                    if d_vals != s_vals:
+                        diff_k, diff_i = log_diff(t_index, True, s_row,
+                                                  True, d_row)
+                        if nori.core.cfg['action'] == 'sync':
+                            ret = do_sync(t_index, s_row, diff_k, diff_i)
+                            # ignore ret[0] for now; errors will cause
+                            # the script to exit before this, as
+                            # currently written
+                            if ret[1]:
+                                global_callback_needed = True
+                    break
+            else:  # multiple-row matching
+                if d_keys == s_keys and d_vals == s_vals:
+                    s_found = True
+                    if nori.core.cfg['bidir']:
+                        d_found.append(di)
+                    break
 
         # row not found
-        if not found:
+        if not s_found:
             log_diff(t_index, True, s_row, False, None)
+            if t_multiple:
+                ret = do_sync(t_index, s_row, diff_k, diff_i)
+                # ignore ret[0] for now; errors will cause the script to
+                # exit before this, as currently written
+                if ret[1]:
+                    global_callback_needed = True
 
     # check for missing rows in the source DB
     if nori.core.cfg['bidir']:
-        for d_row in d_rows:
-            # apply transform
-            if to_source_func and callable(to_source_func):
-                d_row = to_source_func(template, d_row)
-
-            # filter by keys
-            if not key_filter(t_index, dest_kwargs['key_cv'], d_row):
-                continue
-
-            found = False
-            d_keys = d_row[0:len(dest_kwargs['key_cv'])]
-            d_vals = d_row[len(dest_kwargs['key_cv']):]
-            for s_row in s_rows:
-                # apply transform
-                if to_dest_func and callable(to_dest_func):
-                    s_row = to_dest_func(template, s_row)
-
-                # filter by keys
-                if not key_filter(t_index, source_kwargs['key_cv'],
-                                  s_row):
-                    continue
-
-                # the actual row check
-                s_keys = s_row[0:len(source_kwargs['key_cv'])]
-                s_vals = s_row[len(source_kwargs['key_cv']):]
-                if s_keys == d_keys:
-                    found = True
-                    break
-
-            # row not found
-            if not found:
+        for di, d_row in enumerate(d_rows):
+            if di not in d_found:
                 log_diff(t_index, False, None, True, d_row)
 
     return global_callback_needed
@@ -2566,19 +2572,36 @@ def run_mode_hook():
             # script to exit before this, as currently written
             break
 
-
-
+        # dispatch the actual diff(s)/sync(s)
         global_callback_needed = False
-        row_group = []
-        current_keys = s_rows[0][0:len(source_kwargs['key_cv'])]
-        for s_row in s_rows:
-            if current_keys == s_row[0:len(source_kwargs['key_cv'])]:
-                row_group.append(s_row)
-            else:
-                next_keys = s_row[0:len(source_kwargs['key_cv'])]
-                if do_diff_sync(t_index, s_row_group, d_row_group):
-                    global_callback_needed = True
+        if not t_multiple:
+            if do_diff_sync(t_index, s_rows, d_rows):
+                global_callback_needed = True
+        else:
+            # group by keys
+            s_row_groups = {}
+            s_num_keys = len(source_kwargs['key_cv'])
+            for s_row in s_rows:
+                if s_row[0:s_num_keys] not in s_row_groups:
+                    s_row_groups[s_row[0:s_num_keys]] = []
+                s_row_groups[s_row[0:s_num_keys]].append(s_row)
+            d_row_groups = {}
+            d_num_keys = len(dest_kwargs['key_cv'])
+            for d_row in d_rows:
+                if d_row[0:d_num_keys] not in d_row_groups:
+                    d_row_groups[d_row[0:d_num_keys]] = []
+                d_row_groups[d_row[0:d_num_keys]].append(d_row)
 
+            # dispatch by group
+            for s_keys in s_row_groups:
+                if s_keys not in d_row_groups:
+                    for s_row in s_row_groups[s_keys]:
+                        log_diff(t_index, True, s_row, None, None)
+                else:
+                    if do_diff_sync(t_index, s_row_groups[s_keys],
+                                    d_row_groups[s_keys]):
+                        global_callback_needed = True
+#TODO also d -> s diff
 
 
         #
