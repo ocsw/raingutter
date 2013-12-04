@@ -235,7 +235,7 @@ done by other means.
 The DB query functions must take three keyword arguments in addition to any
 other *args and **kwargs:
     db_obj: the database object to use
-    mode: 'read' or 'update'; defaults to 'read'
+    mode: 'read', 'update', or 'insert'
     key_cv: a sequence of 2- or 3-tuples indicating the names of the
             'key' columns, the data types of the columns, and the values
             to require for the columns (the data types are passed to the
@@ -269,8 +269,8 @@ retrieved in sequence (i.e., two rows for the same keys may not be separated
 by a row for different keys; this typically requires an ORDER BY clause in
 SQL).
 
-In 'update' mode, the query functions must return True or False to indicate
-success or failure.
+In 'update' and 'insert' modes, the query functions must return True or
+False to indicate success or failure.
 
 The transform functions must take the following parameters:
     template: the complete template entry for this data
@@ -1001,9 +1001,8 @@ def init_reporting():
 # functions explain what's going on)
 #
 
-def generic_db_query(db_obj=None, mode='read', tables='', key_cv=[],
-                     value_cv=[], where_str=None, more_str=None,
-                     more_args=[], no_replicate=False):
+def generic_db_query(db_obj, mode, tables, key_cv, value_cv, where_str=None,
+                     more_str=None, more_args=[], no_replicate=False):
 
     """
     Generic 'DB query function' for use in templates.
@@ -1012,7 +1011,7 @@ def generic_db_query(db_obj=None, mode='read', tables='', key_cv=[],
 
     Parameters:
         db_obj: the database object to use
-        mode: 'read' or 'update'
+        mode: 'read', 'update', or 'insert'
         tables: either a sequence of table names, which will be joined
                 with commas (INNER JOIN), or a string which will be used
                 as the FROM clause of the query (don't include the FROM
@@ -1041,12 +1040,12 @@ def generic_db_query(db_obj=None, mode='read', tables='', key_cv=[],
 
     Dependencies:
         functions: get_select_query(), get_update_query(),
-                   generic_db_generator()
+                   get_insert_query()
         modules: sys, nori
 
     """
 
-    if mode != 'read' and mode != 'update':
+    if mode != 'read' and mode != 'update' and mode != 'insert':
         nori.core.email_logger.error(
 '''Internal Error: invalid mode supplied in call to generic_db_query();
 call was (in expanded notation):
@@ -1086,8 +1085,13 @@ Exiting.'''.format(*map(nori.pps, [db_obj, mode, tables, key_cv, value_cv,
         return db_obj.execute(None, query_str, query_args,
                               has_results=False)
 
+    if mode == 'insert':
+        q = get_insert_query(tables, key_cv, value_cv, where_str)
+        return db_obj.execute(None, query_str, query_args,
+                              has_results=False)
 
-def get_select_query(tables='', key_cv=[], value_cv=[], where_str=None,
+
+def get_select_query(tables, key_cv, value_cv, where_str=None,
                      more_str=None, more_args=[]):
     """
     Create the query string and argument list for a SELECT query.
@@ -1123,7 +1127,7 @@ def get_select_query(tables='', key_cv=[], value_cv=[], where_str=None,
     return (query_str, query_args)
 
 
-def get_update_query(tables='', key_cv=[], value_cv=[], where_str=None):
+def get_update_query(tables, key_cv, value_cv, where_str=None):
     """
     Create the query string and argument list for an UPDATE query.
     Returns a tuple: (query_str, query_args).
@@ -1156,8 +1160,40 @@ def get_update_query(tables='', key_cv=[], value_cv=[], where_str=None):
     return (query_str, query_args)
 
 
-def drupal_db_query(db_obj=None, mode='read', key_cv=[], value_cv=[],
-                    no_replicate=False):
+def get_insert_query(tables, key_cv, value_cv, where_str=None):
+    """
+    Create the query string and argument list for an INSERT query.
+    Returns a tuple: (query_str, query_args).
+    Parameters:
+        see generic_db_query()
+    Dependencies:
+        modules: nori
+    """
+    query_args = []
+    query_str = 'INSERT INTO '
+#    if isinstance(tables, nori.core.CONTAINER_TYPES):
+#        query_str += ', '.join(tables)
+#    else:
+#        query_str += tables
+#    query_str += '\n'
+#    set_parts = []
+#    for cv in value_cv:
+#        if len(cv) > 2:
+#            set_parts.append('{0} = %'.format(cv[0]))
+#            query_args.append(cv[2])
+#    query_str += 'SET ' + ', '.join(set_parts) + '\n'
+#    where_parts = []
+#    if where_str:
+#        where_parts.append('(' + where_str + ')')
+#    for cv in key_cv:
+#        if len(cv) > 2:
+#            where_parts.append('({0} = %)'.format(cv[0]))
+#            query_args.append(cv[2])
+#    query_str += 'WHERE ' + '\nAND\n'.join(where_parts) + '\n'
+    return (query_str, query_args)
+
+
+def drupal_db_query(db_obj, mode, key_cv, value_cv, no_replicate=False):
 
     """
     Drupal 'DB query function' for use in templates.
@@ -1267,7 +1303,7 @@ def drupal_db_query(db_obj=None, mode='read', key_cv=[], value_cv=[],
 
     Parameters:
         db_obj: the database object to use
-        mode: 'read' or 'update'
+        mode: 'read', 'update', or 'insert'
         key_cv: a sequence of 2- or 3-tuples indicating the names of the
                 'key' fields, their associated data types, and
                 (optionally) values to require for them (see above)
@@ -1284,7 +1320,7 @@ def drupal_db_query(db_obj=None, mode='read', key_cv=[], value_cv=[],
 
     """
 
-    if mode != 'read' and mode != 'update':
+    if mode != 'read' and mode != 'update' and mode != 'insert':
         nori.core.email_logger.error(
 '''Internal Error: invalid mode supplied in call to
 drupal_db_query(); call was (in expanded notation):
@@ -1304,9 +1340,11 @@ Exiting.'''.format(*map(nori.pps, [db_obj, mode, key_cv, value_cv,
         return drupal_db_read(db_obj, key_cv, value_cv)
     if mode == 'update':
         return drupal_db_update(db_obj, key_cv, value_cv, no_replicate)
+    if mode == 'insert':
+        return drupal_db_insert(db_obj, key_cv, value_cv, no_replicate)
 
 
-def drupal_db_read(db_obj=None, key_cv=[], value_cv=[]):
+def drupal_db_read(db_obj, key_cv, value_cv):
 
     """
     Do the actual work for generic Drupal DB reads.
@@ -1351,7 +1389,7 @@ Exiting.'''.format(*map(nori.pps, [db_obj, key_cv, value_cv]))
     return ret[1]
 
 
-def get_drupal_db_read_query(key_cv=[], value_cv=[]):
+def get_drupal_db_read_query(key_cv, value_cv):
 
     """
     Get the query string and argument list for a Drupal DB read.
@@ -1917,8 +1955,7 @@ ORDER BY node.title, node.nid, fcf.delta, {11}
     return (None, None)
 
 
-def drupal_db_update(db_obj=None, key_cv=[], value_cv=[],
-                     no_replicate=False):
+def drupal_db_update(db_obj, key_cv, value_cv, no_replicate=False):
 
     """
     Do the actual work for generic Drupal DB updates.
@@ -1928,6 +1965,48 @@ def drupal_db_update(db_obj=None, key_cv=[], value_cv=[],
 
     Dependencies:
 
+    """
+    pass
+
+
+def get_drupal_db_update_query(key_cv, value_cv):
+
+    """
+    Get the query string and argument list for a Drupal DB update.
+
+    Parameters:
+        see generic_drupal_db_query()
+
+    Dependencies:
+        functions: get_drupal_chain_type()
+    """
+    pass
+
+
+def drupal_db_insert(db_obj, key_cv, value_cv, no_replicate=False):
+
+    """
+    Do the actual work for generic Drupal DB inserts.
+
+    Parameters:
+        see generic_drupal_db_query()
+
+    Dependencies:
+
+    """
+    pass
+
+
+def get_drupal_db_insert_query(key_cv, value_cv):
+
+    """
+    Get the query string and argument list for a Drupal DB insert.
+
+    Parameters:
+        see generic_drupal_db_query()
+
+    Dependencies:
+        functions: get_drupal_chain_type()
     """
     pass
 
@@ -2325,6 +2404,7 @@ def do_sync(t_index, s_row, diff_k, diff_i):
 
     # get settings and resources
     template = nori.core.cfg['templates'][t_index]
+    t_multiple = template[T_MULTIPLE_IDX]
     if not nori.core.cfg['reverse']:
         dest_type = template[T_D_TYPE_IDX]
         dest_func = template[T_D_QUERY_FUNC_IDX]
@@ -2355,15 +2435,26 @@ def do_sync(t_index, s_row, diff_k, diff_i):
     new_dest_kwargs['key_cv'] = new_key_cv
     new_dest_kwargs['value_cv'] = new_value_cv
 
-    # do the update
-    nori.core.status_logger.info('Updating destination database...')
+    # do the update / insert
+    if t_multiple:
+        nori.core.status_logger.info(
+            'Inserting into destination database...'
+        )
+    else:
+        nori.core.status_logger.info(
+            'Updating destination database...'
+        )
     global_callback_needed = False
-    ret = dest_func(*dest_args, db_obj=d_db, mode='update',
+    ret = dest_func(*dest_args, db_obj=d_db,
+                    mode='insert' if t_multiple else 'update',
                     **new_dest_kwargs)
     if ret:
         update_diff(diff_k, diff_i)
         global_callback_needed = True
-        nori.core.status_logger.info('Update complete.')
+        if t_multiple:
+            nori.core.status_logger.info('Insert complete.')
+        else:
+            nori.core.status_logger.info('Update complete.')
     # DB code will handle errors
     if not (dest_change_func and callable(dest_change_func)):
         return (ret, global_callback_needed)
