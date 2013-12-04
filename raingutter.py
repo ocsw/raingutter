@@ -1452,6 +1452,8 @@ def get_drupal_db_read_query(key_cv, value_cv):
     """
 
     chain_type = get_drupal_chain_type(key_cv, value_cv)
+    if not chain_type:
+        return (None, None)
 
     #
     # node -> field(s) (including term references)
@@ -1999,16 +2001,13 @@ ORDER BY node.title, node.nid, fcf.delta, {11}
 
         return (query_str.strip(), query_args)
 
-    #
-    # should never be reached
-    #
-    return (None, None)
-
 
 def drupal_db_update(db_obj, key_cv, value_cv, no_replicate=False):
 
     """
     Do the actual work for generic Drupal DB updates.
+
+    The value_cv sequence may only have one element.
 
     Parameters:
         see generic_drupal_db_query()
@@ -2038,6 +2037,8 @@ def drupal_db_insert(db_obj, key_cv, value_cv, no_replicate=False):
     """
     Do the actual work for generic Drupal DB inserts.
 
+    The value_cv argument may only have one element.
+
     Parameters:
         see generic_drupal_db_query()
 
@@ -2051,6 +2052,8 @@ def get_drupal_db_insert_query(key_cv, value_cv):
 
     """
     Get the query string and argument list for a Drupal DB insert.
+
+    The value_cv argument may only have one element.
 
     Parameters:
         see generic_drupal_db_query()
@@ -2096,7 +2099,8 @@ def clear_drupal_cache(db_obj):
         return False
     for table in ret[1]:
         if table[0].startswith('cache'):
-            ret = db_obj.execute(None, 'DELETE FROM {0};'.format(table[0]))
+            ret = db_obj.execute(None, 'DELETE FROM {0};'.format(table[0]),
+                                 has_results=False)
             print(ret)
             if not ret:
                 return False
