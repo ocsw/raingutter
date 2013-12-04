@@ -1081,14 +1081,38 @@ Exiting.'''.format(*map(nori.pps, [db_obj, mode, tables, key_cv, value_cv,
         return ret[1]
 
     if mode == 'update':
-        q = get_update_query(tables, key_cv, value_cv, where_str)
-        return db_obj.execute(None, query_str, query_args,
-                              has_results=False)
+        ret = True
+        for i, cv in enumerate(value_cv):
+            q = get_update_query(tables, key_cv, [value_cv[i]], where_str)
+            up_ret = db_obj.execute(None, query_str, query_args,
+                                    has_results=False)
+            if not up_ret:
+                # eventually, there should be an option for this case:
+                # exit or continue? (currently, won't be reached)
+                ret = False
+            elif db_obj.cur.rowcount == 0:
+                # there was no row there to update, have to insert it
+                q = get_insert_query(tables, key_cv, [value_cv[i]],
+                                     where_str)
+                in_ret = db_obj.execute(None, query_str, query_args,
+                                        has_results=False)
+                if not in_ret:
+                    # eventually, there should be an option for this case:
+                    # exit or continue? (currently, won't be reached)
+                    ret = False
+        return ret
 
     if mode == 'insert':
-        q = get_insert_query(tables, key_cv, value_cv, where_str)
-        return db_obj.execute(None, query_str, query_args,
-                              has_results=False)
+        ret = True
+        for i, cv in enumerate(value_cv):
+            q = get_insert_query(tables, key_cv, [value_cv[i]], where_str)
+            in_ret = db_obj.execute(None, query_str, query_args,
+                                    has_results=False)
+            if not in_ret:
+                # eventually, there should be an option for this case:
+                # exit or continue? (currently, won't be reached)
+                ret = False
+        return ret
 
 
 def get_select_query(tables, key_cv, value_cv, where_str=None,
@@ -1338,10 +1362,36 @@ Exiting.'''.format(*map(nori.pps, [db_obj, mode, key_cv, value_cv,
 
     if mode == 'read':
         return drupal_db_read(db_obj, key_cv, value_cv)
+
     if mode == 'update':
-        return drupal_db_update(db_obj, key_cv, value_cv, no_replicate)
+        ret = True
+        for i, cv in enumerate(value_cv):
+            up_ret = drupal_db_update(db_obj, key_cv, [value_cv[i]],
+                                      no_replicate)
+            if not up_ret:
+                # eventually, there should be an option for this case:
+                # exit or continue? (currently, won't be reached)
+                ret = False
+            elif db_obj.cur.rowcount == 0:
+                # there was no row there to update, have to insert it
+                in_ret = drupal_db_insert(db_obj, key_cv, [value_cv[i]],
+                                          no_replicate)
+                if not in_ret:
+                    # eventually, there should be an option for this case:
+                    # exit or continue? (currently, won't be reached)
+                    ret = False
+        return ret
+
     if mode == 'insert':
-        return drupal_db_insert(db_obj, key_cv, value_cv, no_replicate)
+        ret = True
+        for i, cv in enumerate(value_cv):
+            in_ret = drupal_db_insert(db_obj, key_cv, [value_cv[i]],
+                                      no_replicate)
+            if not in_ret:
+                # eventually, there should be an option for this case:
+                # exit or continue? (currently, won't be reached)
+                ret = False
+        return ret
 
 
 def drupal_db_read(db_obj, key_cv, value_cv):
