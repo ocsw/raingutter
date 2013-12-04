@@ -2,9 +2,13 @@ TODO
 
 ***len of cv != ken after transform
 
+u, i: retvals: num success/fail?
+
 updates
 inserts
     multiples: only one target?  only one table?
+    Drupal cardinality for fields
+    default for all fields for nodes
 drupal read:
     add node -> title, fc -> label, etc.
     inner joins for relations, etc?
