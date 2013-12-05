@@ -1156,7 +1156,7 @@ def generic_db_read(db_obj, db_cur, tables, key_cv, value_cv,
         where_parts.append('(' + where_str + ')')
     for cv in key_cv:
         if len(cv) > 2:
-            where_parts.append('({0} = %)'.format(cv[0]))
+            where_parts.append('({0} = %s)'.format(cv[0]))
             query_args.append(cv[2])
     if where_parts:
         query_str += 'WHERE ' + '\nAND\n'.join(where_parts) + '\n'
@@ -1226,7 +1226,7 @@ Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, tables, key_cv, value_cv,
         where_parts.append('(' + where_str + ')')
     for cv in key_cv:
         if len(cv) > 2:
-            where_parts.append('({0} = %)'.format(cv[0]))
+            where_parts.append('({0} = %s)'.format(cv[0]))
             query_args.append(cv[2])
     query_str += 'WHERE ' + '\nAND\n'.join(where_parts) + '\n'
 
@@ -1281,7 +1281,7 @@ Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, tables, key_cv, value_cv,
 #    set_parts = []
 #    for cv in value_cv:
 #        if len(cv) > 2:
-#            set_parts.append('{0} = %'.format(cv[0]))
+#            set_parts.append('{0} = %s'.format(cv[0]))
 #            query_args.append(cv[2])
 #    query_str += 'SET ' + ', '.join(set_parts) + '\n'
 #    where_parts = []
@@ -1289,7 +1289,7 @@ Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, tables, key_cv, value_cv,
 #        where_parts.append('(' + where_str + ')')
 #    for cv in key_cv:
 #        if len(cv) > 2:
-#            where_parts.append('({0} = %)'.format(cv[0]))
+#            where_parts.append('({0} = %s)'.format(cv[0]))
 #            query_args.append(cv[2])
 #    query_str += 'WHERE ' + '\nAND\n'.join(where_parts) + '\n'
 
