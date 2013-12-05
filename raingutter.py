@@ -1041,8 +1041,8 @@ def generic_db_query(db_obj, mode, tables, key_cv, value_cv, where_str=None,
                       prevent the query from proceeding
 
     Dependencies:
-        functions: get_select_query(), get_update_query(),
-                   get_insert_query()
+        functions: generic_db_read(), generic_db_update(),
+                   generic_db_insert()
         modules: sys, nori
 
     """
@@ -1069,39 +1069,29 @@ Exiting.'''.format(*map(nori.pps, [db_obj, mode, tables, key_cv, value_cv,
         sys.exit(nori.core.exitvals['internal']['num'])
 
     if mode == 'read':
-        query_str, query_args = get_select_query(
-            tables, key_cv, value_cv, where_str, more_str, more_args
-        )
-        if not db_obj.execute(None, query_str, query_args,
-                              has_results=True):
-            return None
-        ret = db_obj.fetchall(None)
-        if not ret[0]:
-            return None
-        if not ret[1]:
-            return []
-        return ret[1]
+        return generic_db_read(db_obj, tables, key_cv, value_cv, where_str,
+                               more_str, more_args)
 
     if mode == 'update':
         successes = 0
         failures = 0
         for i, cv in enumerate(value_cv):
-            q = get_update_query(tables, key_cv, [value_cv[i]], where_str)
-            up_ret = db_obj.execute(None, query_str, query_args,
-                                    has_results=False)
+            up_ret = generic_db_update(db_obj, tables, key_cv,
+                                       [value_cv[i]], where_str,
+                                       no_replicate)
             if not up_ret:
                 # eventually, there should be an option for this case:
                 # exit or continue? (currently, won't be reached)
                 failures += 1
             elif db_obj.cur.rowcount == 0:
                 # there was no row there to update, have to insert it
-                q = get_insert_query(tables, key_cv, [value_cv[i]],
-                                     where_str)
-                in_ret = db_obj.execute(None, query_str, query_args,
-                                        has_results=False)
+                in_ret = generic_db_insert(db_obj, tables, key_cv,
+                                           [value_cv[i]], where_str,
+                                           no_replicate)
                 if not in_ret:
-                    # eventually, there should be an option for this case:
-                    # exit or continue? (currently, won't be reached)
+                    # eventually, there should be an option for this
+                    # case: exit or continue? (currently, won't be
+                    # reached)
                     failures += 1
                 else:
                     successes += 1
@@ -1113,9 +1103,9 @@ Exiting.'''.format(*map(nori.pps, [db_obj, mode, tables, key_cv, value_cv,
         successes = 0
         failures = 0
         for i, cv in enumerate(value_cv):
-            q = get_insert_query(tables, key_cv, [value_cv[i]], where_str)
-            in_ret = db_obj.execute(None, query_str, query_args,
-                                    has_results=False)
+            in_ret = generic_db_insert(db_obj, tables, key_cv,
+                                       [value_cv[i]], where_str,
+                                       no_replicate)
             if not in_ret:
                 # eventually, there should be an option for this case:
                 # exit or continue? (currently, won't be reached)
@@ -1125,16 +1115,21 @@ Exiting.'''.format(*map(nori.pps, [db_obj, mode, tables, key_cv, value_cv,
         return (successes, failures)
 
 
-def get_select_query(tables, key_cv, value_cv, where_str=None,
-                     more_str=None, more_args=[]):
+def generic_db_read(db_obj, tables, key_cv, value_cv, where_str=None,
+                    more_str=None, more_args=[])
+
     """
-    Create the query string and argument list for a SELECT query.
-    Returns a tuple: (query_str, query_args).
+    Do the actual work for generic DB reads.
+
     Parameters:
         see generic_db_query()
+
     Dependencies:
         modules: operator, nori
+
     """
+
+    # assemble the query string and argument list
     query_args = []
     query_str = 'SELECT '
     query_str += ', '.join(map(operator.itemgetter(0),
@@ -1158,18 +1153,34 @@ def get_select_query(tables, key_cv, value_cv, where_str=None,
     if more_str:
         query_str += more_str
         query_args += more_args
-    return (query_str, query_args)
+
+    # execute the query
+    if not db_obj.execute(None, query_str.strip(), query_args,
+                          has_results=True):
+        return None
+    ret = db_obj.fetchall(None)
+    if not ret[0]:
+        return None
+    if not ret[1]:
+        return []
+    return ret[1]
 
 
-def get_update_query(tables, key_cv, value_cv, where_str=None):
+def generic_db_update(db_obj, tables, key_cv, value_cv, where_str=None,
+                      no_replicate=False)
+
     """
-    Create the query string and argument list for an UPDATE query.
-    Returns a tuple: (query_str, query_args).
+    Do the actual work for generic DB updates.
+
     Parameters:
         see generic_db_query()
+
     Dependencies:
         modules: nori
+
     """
+
+    # assemble the query string and argument list
     query_args = []
     query_str = 'UPDATE '
     if isinstance(tables, nori.core.CONTAINER_TYPES):
@@ -1191,18 +1202,27 @@ def get_update_query(tables, key_cv, value_cv, where_str=None):
             where_parts.append('({0} = %)'.format(cv[0]))
             query_args.append(cv[2])
     query_str += 'WHERE ' + '\nAND\n'.join(where_parts) + '\n'
-    return (query_str, query_args)
+
+    # execute the query
+    return db_obj.execute(None, query_str.split(), query_args,
+                          has_results=False)
 
 
-def get_insert_query(tables, key_cv, value_cv, where_str=None):
+def generic_db_insert(db_obj, tables, key_cv, value_cv, where_str=None,
+                      no_replicate=False)
+
     """
-    Create the query string and argument list for an INSERT query.
-    Returns a tuple: (query_str, query_args).
+    Do the actual work for generic DB inserts.
+
     Parameters:
         see generic_db_query()
+
     Dependencies:
         modules: nori
+
     """
+
+    # assemble the query string and argument list
     query_args = []
     query_str = 'INSERT INTO '
 #    if isinstance(tables, nori.core.CONTAINER_TYPES):
@@ -1224,7 +1244,10 @@ def get_insert_query(tables, key_cv, value_cv, where_str=None):
 #            where_parts.append('({0} = %)'.format(cv[0]))
 #            query_args.append(cv[2])
 #    query_str += 'WHERE ' + '\nAND\n'.join(where_parts) + '\n'
-    return (query_str, query_args)
+
+    # execute the query
+    return db_obj.execute(None, query_str.split(), query_args,
+                          has_results=False)
 
 
 def drupal_db_query(db_obj, mode, key_cv, value_cv, no_replicate=False):
@@ -1388,8 +1411,9 @@ Exiting.'''.format(*map(nori.pps, [db_obj, mode, key_cv, value_cv,
                 in_ret = drupal_db_insert(db_obj, key_cv, [value_cv[i]],
                                           no_replicate)
                 if not in_ret:
-                    # eventually, there should be an option for this case:
-                    # exit or continue? (currently, won't be reached)
+                    # eventually, there should be an option for this
+                    # case: exit or continue? (currently, won't be
+                    # reached)
                     failures += 1
                 else:
                     successes += 1
@@ -1423,17 +1447,17 @@ def drupal_db_read(db_obj, key_cv, value_cv):
     the format of the opposite query function.
 
     Parameters:
-        see generic_drupal_db_query()
+        see drupal_db_query()
 
     Dependencies:
-        functions: get_drupal_db_read_query()
+        functions: get_drupal_chain_type()
         modules: sys, nori
 
     """
 
-    query_str, query_args = get_drupal_db_read_query(key_cv, value_cv)
-
-    if query_str is None and query_args is None:
+    # get the chain type
+    chain_type = get_drupal_chain_type(key_cv, value_cv)
+    if not chain_type:
         nori.core.email_logger.error(
 '''Internal Error: invalid field list supplied in call to
 drupal_db_read(); call was (in expanded notation):
@@ -1446,32 +1470,7 @@ Exiting.'''.format(*map(nori.pps, [db_obj, key_cv, value_cv]))
         )
         sys.exit(nori.core.exitvals['internal']['num'])
 
-    if not db_obj.execute(None, query_str, query_args, has_results=True):
-        return None
-
-    ret = db_obj.fetchall(None)
-    if not ret[0]:
-        return None
-    if not ret[1]:
-        return []
-    return ret[1]
-
-
-def get_drupal_db_read_query(key_cv, value_cv):
-
-    """
-    Get the query string and argument list for a Drupal DB read.
-
-    Parameters:
-        see generic_drupal_db_query()
-
-    Dependencies:
-        functions: get_drupal_chain_type()
-    """
-
-    chain_type = get_drupal_chain_type(key_cv, value_cv)
-    if not chain_type:
-        return (None, None)
+    ########### assemble the query string and argument list ###########
 
     #
     # node -> field(s) (including term references)
@@ -1579,12 +1578,10 @@ ORDER BY node.title, node.nid, {7}
             query_args.append(node_value)
         query_args += field_values
 
-        return (query_str.strip(), query_args)
-
     #
     # node -> relation -> node
     #
-    if chain_type == 'n-r-n':
+    elif chain_type == 'n-r-n':
         # key-node details
         k_node_cv = key_cv[0]
         k_node_ident = k_node_cv[0]
@@ -1689,12 +1686,10 @@ ORDER BY k_node.title, k_node.nid, e1.entity_id, v_node.title, v_node.nid
         if len(v_node_cv) > 2:
             query_args.append(v_node_value)
 
-        return (query_str.strip(), query_args)
-
     #
     # node -> relation & node -> relation_field(s) (incl. term refs)
     #
-    if chain_type == 'n-rn-rf':
+    elif chain_type == 'n-rn-rf':
         # node1 details
         node1_cv = key_cv[0]
         node1_ident = node1_cv[0]
@@ -1860,12 +1855,10 @@ ORDER BY k_node.title, k_node.nid, e1.entity_id, {10}
             query_args.append(node2_value)
         query_args += field_values
 
-        return (query_str.strip(), query_args)
-
     #
     # node -> fc -> field(s) (including term references)
     #
-    if chain_type == 'n-fc-f':
+    elif chain_type == 'n-fc-f':
         # node details
         node_cv = key_cv[0]
         node_ident = node_cv[0]
@@ -2017,7 +2010,17 @@ ORDER BY node.title, node.nid, fcf.delta, {11}
             query_args.append(fc_value)
         query_args += field_values
 
-        return (query_str.strip(), query_args)
+    ######################## execute the query ########################
+
+    if not db_obj.execute(None, query_str.strip(), query_args,
+                          has_results=True):
+        return None
+    ret = db_obj.fetchall(None)
+    if not ret[0]:
+        return None
+    if not ret[1]:
+        return []
+    return ret[1]
 
 
 def drupal_db_update(db_obj, key_cv, value_cv, no_replicate=False):
@@ -2028,17 +2031,32 @@ def drupal_db_update(db_obj, key_cv, value_cv, no_replicate=False):
     The value_cv sequence may only have one element.
 
     Parameters:
-        see generic_drupal_db_query()
+        see drupal_db_query()
 
     Dependencies:
-        functions: get_drupal_db_update_query()
+        functions: get_drupal_chain_type()
         modules: sys, nori
 
     """
 
-    query_str, query_args = get_drupal_db_update_query(key_cv, value_cv)
+    # sanity check
+    if len(value_cv) != 1:
+        nori.core.email_logger.error(
+'''Internal Error: multiple value_cv entries supplied in call to
+drupal_db_update(); call was (in expanded notation):
 
-    if query_str is None and query_args is None:
+drupal_db_update(db_obj={0},
+                 key_cv={1},
+                 value_cv={2},
+                 no_replicate={3})
+
+Exiting.'''.format(*map(nori.pps, [db_obj, key_cv, value_cv, no_replicate]))
+        )
+        sys.exit(nori.core.exitvals['internal']['num'])
+
+    # get the chain type
+    chain_type = get_drupal_chain_type(key_cv, value_cv)
+    if not chain_type:
         nori.core.email_logger.error(
 '''Internal Error: invalid field list supplied in call to
 drupal_db_update(); call was (in expanded notation):
@@ -2052,29 +2070,7 @@ Exiting.'''.format(*map(nori.pps, [db_obj, key_cv, value_cv, no_replicate]))
         )
         sys.exit(nori.core.exitvals['internal']['num'])
 
-    return db_obj.execute(None, query_str, query_args, has_results=False)
-
-
-def get_drupal_db_update_query(key_cv, value_cv):
-
-    """
-    Get the query string and argument list for a Drupal DB update.
-
-    The value_cv argument may only have one element.
-
-    Parameters:
-        see generic_drupal_db_query()
-
-    Dependencies:
-        functions: get_drupal_chain_type()
-    """
-
-    if len(value_cv) != 1:
-        return (None, None)
-
-    chain_type = get_drupal_chain_type(key_cv, value_cv)
-    if not chain_type:
-        return (None, None)
+    ########### assemble the query string and argument list ###########
 
     #
     # node -> field (including term references)
@@ -2136,12 +2132,10 @@ AND (f.deleted = 0 OR f.deleted IS NULL)
         )
         query_args = [field_value, node_type, node_value]
 
-        return (query_str.strip(), query_args)
-
     #
     # node -> relation -> node
     #
-    if chain_type == 'n-r-n':
+    elif chain_type == 'n-r-n':
         # key-node details
         k_node_cv = key_cv[0]
         k_node_ident = k_node_cv[0]
@@ -2216,12 +2210,10 @@ AND {1} = %s
         query_args = [k_node_type, k_node_value, rel_type, v_node_type,
                       v_node_value]
 
-        return (query_str.strip(), query_args)
-
     #
     # node -> relation & node -> relation_field (incl. term refs)
     #
-    if chain_type == 'n-rn-rf':
+    elif chain_type == 'n-rn-rf':
         # node1 details
         node1_cv = key_cv[0]
         node1_ident = node1_cv[0]
@@ -2324,12 +2316,10 @@ AND (f.deleted = 0 OR f.deleted IS NULL)
         query_args = [field_value, node1_type, node1_value, rel_type,
                       node2_type, node2_value]
 
-        return (query_str.strip(), query_args)
-
     #
     # node -> fc -> field (including term references)
     #
-    if chain_type == 'n-fc-f':
+    elif chain_type == 'n-fc-f':
         # node details
         node_cv = key_cv[0]
         node_ident = node_cv[0]
@@ -2417,7 +2407,10 @@ AND (f.deleted = 0 OR f.deleted IS NULL)
         )
         query_args = [field_value, node_type, node_value, fc_value]
 
-        return (query_str.strip(), query_args)
+    ######################## execute the query ########################
+
+    return db_obj.execute(None, query_str.strip(), query_args,
+                          has_results=False)
 
 
 def drupal_db_insert(db_obj, key_cv, value_cv, no_replicate=False):
@@ -2425,20 +2418,35 @@ def drupal_db_insert(db_obj, key_cv, value_cv, no_replicate=False):
     """
     Do the actual work for generic Drupal DB inserts.
 
-    The value_cv argument may only have one element.
+    The value_cv sequence may only have one element.
 
     Parameters:
-        see generic_drupal_db_query()
+        see drupal_db_query()
 
     Dependencies:
-        functions: get_drupal_db_insert_query()
+        functions: get_drupal_chain_type()
         modules: sys, nori
 
     """
 
-    query_str, query_args = get_drupal_db_insert_query(key_cv, value_cv)
+    # sanity check
+    if len(value_cv) != 1:
+        nori.core.email_logger.error(
+'''Internal Error: multiple value_cv entries supplied in call to
+drupal_db_insert(); call was (in expanded notation):
 
-    if query_str is None and query_args is None:
+drupal_db_insert(db_obj={0},
+                 key_cv={1},
+                 value_cv={2},
+                 no_replicate={3})
+
+Exiting.'''.format(*map(nori.pps, [db_obj, key_cv, value_cv, no_replicate]))
+        )
+        sys.exit(nori.core.exitvals['internal']['num'])
+
+    # get the chain type
+    chain_type = get_drupal_chain_type(key_cv, value_cv)
+    if not chain_type:
         nori.core.email_logger.error(
 '''Internal Error: invalid field list supplied in call to
 drupal_db_insert(); call was (in expanded notation):
@@ -2452,32 +2460,7 @@ Exiting.'''.format(*map(nori.pps, [db_obj, key_cv, value_cv, no_replicate]))
         )
         sys.exit(nori.core.exitvals['internal']['num'])
 
-    return db_obj.execute(None, query_str, query_args, has_results=False)
-
-
-def get_drupal_db_insert_query(key_cv, value_cv):
-
-    """
-    Get the query string and argument list for a Drupal DB insert.
-
-    The value_cv argument may only have one element.
-
-    Parameters:
-        see generic_drupal_db_query()
-
-    Dependencies:
-        functions: get_drupal_chain_type()
-    """
-
-    if len(value_cv) != 1:
-        return (None, None)
-
-    chain_type = get_drupal_chain_type(key_cv, value_cv)
-    if not chain_type:
-        return (None, None)
-
     
-
 
 
 ###########################
