@@ -274,13 +274,13 @@ False to indicate success or failure.
 
 The transform functions must take the following parameters:
     template: the complete template entry for this data
-    row: a single row from the results returned by the query function (see
-         above)
-and must return a row in the same format as the input, containing values
-suitable for comparison with or insertion into the opposite database.  In
-many cases, this will require no actual transformation, as the database
-connector will handle data-type conversion on both ends.  To do nothing,
-use:
+    row: a single row tuple from the results returned by the query function
+         (see above)
+and must return a tuple of (number_of_key_columns, data_row).  The row must
+be in the same format as the input, containing values suitable for
+comparison with or insertion into the opposite database.  In many cases,
+this will require no actual transformation, as the database connector will
+handle data-type conversion on both ends.  To do nothing, use:
     lambda x, y, z: (y, z)
 
 Both transform functions will be called before comparing data, so be sure
@@ -292,8 +292,8 @@ if this template has caused any changes in the database for a given row.
 This is particularly important for emulating computed fields in a Drupal
 database.  Change callbacks must accept the following:
     template: the complete template entry for this data
-    row: a single row from the results returned by the query function (see
-         above)
+    row: a (num_keys, data_tuple) tuple, as returned by the transform
+         functions (see above)
 and return True (success) or False (failure).
 
 The key mode specifies which database entries to compare / sync; it may be
@@ -2489,7 +2489,7 @@ def clear_drupal_cache(db_obj):
 # key/value checks and manipulations
 #####################################
 
-def check_key_list_match(key_mode, key_list, key_cv, row):
+def check_key_list_match(key_mode, key_list, num_keys, row):
     """
     Search for a match between a key list and a row.
     Returns True or False.
@@ -2498,8 +2498,7 @@ def check_key_list_match(key_mode, key_list, key_cv, row):
                   or 'exclude')
         key_list: the per-template or global key list to check for a
                   match
-        key_cv: the key_cv argument to the query function that produced
-                the row
+        num_keys: the number of 'key' (as opposed to 'value') in the row
         row: a single row from the results returned by a query function
         (see the description of the templates setting, above, for more
         details)
@@ -2509,7 +2508,6 @@ def check_key_list_match(key_mode, key_list, key_cv, row):
     if key_mode == 'all':
         return True
     else:
-        num_keys = len(key_cv)
         found = False
         for k_match in key_list:
             k_match = nori.scalar_to_tuple(k_match)
@@ -2541,7 +2539,7 @@ Exiting.'''.format(*map(nori.pps, [key_mode, key_list, key_cv, row]))
             return not found
 
 
-def key_filter(template_index, key_cv, row):
+def key_filter(template_index, num_keys, row):
 
     """
     Determine whether to act on a key from the database.
@@ -2551,8 +2549,7 @@ def key_filter(template_index, key_cv, row):
     Parameters:
         template_index: the index of the relevant template in the
                         templates setting
-        key_cv: the key_cv argument to the query function that produced
-                the row
+        num_keys: the number of 'key' (as opposed to 'value') in the row
         row: a single row from the results returned by the query
              function
         (see the description of the templates setting, above, for more
@@ -2572,26 +2569,26 @@ def key_filter(template_index, key_cv, row):
           template[T_KEY_MODE_IDX] == 'all'):
         return True
 
-    if not check_key_list_match(
-          nori.core.cfg['key_mode'], nori.core.cfg['key_list'],
-          key_cv, row):
+    if not check_key_list_match(nori.core.cfg['key_mode'],
+                                nori.core.cfg['key_list'], num_keys, row):
         return False
 
     if not check_key_list_match(template[T_KEY_MODE_IDX],
-                                template[T_KEY_LIST_IDX], key_cv, row):
+                                template[T_KEY_LIST_IDX], num_keys, row):
         return False
 
     return True
 
 
-def key_value_copy(source_row, dest_key_cv, dest_value_cv):
+def key_value_copy(source_data, dest_key_cv, dest_value_cv):
     """
     Transfer the values from a source DB row to the dest DB k/v seqs.
-    The row and the (key_cv + value_cv) must be the same length.
+    The source_data tuple and (dest_key_cv + dest_value_cv) must be the
+    same length.
     Returns a tuple of (key_cv, value_cv).
     Parameters:
-        source_row: a row of 'key' and 'value' values from the source DB
-                    query function
+        source_data: a tuple of 'key' and 'value' values from the source
+                     DB query function
         dest_key_cv: the key cv sequence from the template for the
                      destination database
         dest_value_cv: the value cv sequence from the template for the
@@ -2600,15 +2597,15 @@ def key_value_copy(source_row, dest_key_cv, dest_value_cv):
     new_dest_key_cv = []
     new_dest_value_cv = []
     num_keys = len(dest_key_cv)
-    for i, row_val in enumerate(source_row):
+    for i, data_val in enumerate(source_data):
         if i < num_keys:
             new_dest_key_cv.append(
-                (dest_key_cv[i][0], dest_key_cv[i][1], row_val)
+                (dest_key_cv[i][0], dest_key_cv[i][1], data_val)
             )
         else:
             new_dest_value_cv.append(
                 (dest_value_cv[i - num_keys][0],
-                 dest_value_cv[i - num_keys][1], row_val)
+                 dest_value_cv[i - num_keys][1], data_val)
             )
     return (new_dest_key_cv, new_dest_value_cv)
 
@@ -2631,12 +2628,12 @@ def log_diff(template_index, exists_in_source, source_row, exists_in_dest,
                         templates setting
         exists_in_source: True if the relevant key exists in the source
                           database, otherwise False
-        source_row: the relevant results row from the source DB's query
-                    function
+        source_row: a tuple of (number of key columns, results row from
+                    the source DB's query function)
         exists_in_dest: True if the relevant key exists in the
                         destination database, otherwise False
-        dest_row: the relevant results row from the destination DB's
-                  query function
+        dest_row: a tuple of (number of key columns, results row from
+                  the destination DB's query function)
     Dependencies:
         config settings: templates, report_order
         globals: diff_dict, T_S_QUERY_ARGS_IDX, T_D_QUERY_ARGS_IDX,
@@ -2654,28 +2651,30 @@ def log_diff(template_index, exists_in_source, source_row, exists_in_dest,
     elif nori.core.cfg['report_order'] == 'keys':
         keys_str = ''
         if source_row is not None:
-            num_keys = len(template[T_S_QUERY_ARGS_IDX][1]['key_cv'])
-            for k in source_row[0:num_keys]:
-                keys_str += str(k)
+            num_keys = source_row[0]
+            source_data = source_row[1]
+            keys_tuple = source_data[0:num_keys]
         elif dest_row is not None:
-            num_keys = len(template[T_D_QUERY_ARGS_IDX][1]['key_cv'])
-            for k in dest_row[0:num_keys]:
-                keys_str += str(k)
-        if keys_str not in diff_dict:
-            diff_dict[keys_str] = []
-        diff_dict[keys_str].append((template_index, exists_in_source,
-                                    source_row, exists_in_dest, dest_row,
-                                    False))
-        diff_k = keys_str
+            num_keys = dest_row[0]
+            dest_data = dest_row[1]
+            keys_tuple = dest_data[0:num_keys]
+        if keys_tuple not in diff_dict:
+            diff_dict[keys_tuple] = []
+        diff_dict[keys_tuple].append((template_index, exists_in_source,
+                                      source_row, exists_in_dest, dest_row,
+                                      False))
+        diff_k = keys_tuple
         diff_i = len(diff_dict[keys_str]) - 1
     nori.core.status_logger.info(
         'Diff found for template {0} ({1}):\nS: {2}\nD: {3}' .
         format(template_index,
                nori.pps(template[T_NAME_IDX]),
-               nori.pps(source_row) if exists_in_source
-                                    else '[no match in source database]',
-               nori.pps(dest_row) if exists_in_dest
-                                  else '[no match in destination database]')
+               nori.pps(source_row[1])
+                   if exists_in_source
+                   else '[no match in source database]',
+               nori.pps(dest_row[1])
+                   if exists_in_dest
+                   else '[no match in destination database]')
     )
     return (diff_k, diff_i)
 
@@ -2731,13 +2730,13 @@ def render_diff_report():
                 dest_row = diff_t[3]
                 has_been_changed = diff_t[4]
                 if exists_in_source:
-                    source_str = nori.pps(source_row)
+                    source_str = nori.pps(source_row[1])
                 elif exists_in_source is None:
                     source_str = '[no key match in source database]'
                 else:
                     source_str = '[no match in source database]'
                 if exists_in_dest:
-                    dest_str = nori.pps(dest_row)
+                    dest_str = nori.pps(dest_row[1])
                 elif exists_in_dest is None:
                     dest_str = '[no key match in destination database]'
                 else:
@@ -2762,15 +2761,18 @@ def render_diff_report():
                 dest_row = diff_t[4]
                 has_been_changed = diff_t[5]
                 template = nori.core.cfg['templates'][template_index]
-                num_keys = len(template[T_S_QUERY_ARGS_IDX][1]['key_cv'])
                 if exists_in_source:
-                    source_str = nori.pps(source_row[num_keys:])
+                    num_keys = source_row[0]
+                    source_data = source_row[1]
+                    source_str = nori.pps(source_data[num_keys:])
                 elif exists_in_source is None:
                     source_str = '[no key match in source database]'
                 else:
                     source_str = '[no match in source database]'
                 if exists_in_dest:
-                    dest_str = nori.pps(dest_row[num_keys:])
+                    num_keys = dest_row[0]
+                    dest_data = dest_row[1]
+                    dest_str = nori.pps(dest_data[num_keys:])
                 elif exists_in_dest is None:
                     dest_str = '[no key match in destination database]'
                 else:
@@ -2819,7 +2821,7 @@ def do_sync(t_index, s_row, diff_k, diff_i):
     Parameters:
         t_index: the index of the relevant template in the templates
                  setting
-        s_row: the source data, as returned from the query function
+        s_row: a tuple of (number of keys, the source data tuple)
         diff_k: the key of the diff list within diff_dict
         diff_i: the index of the diff within the list indicated by
                 diff_k
@@ -2861,7 +2863,7 @@ def do_sync(t_index, s_row, diff_k, diff_i):
 
     # set up the new cv sequences
     new_key_cv, new_value_cv = key_value_copy(
-        s_row, dest_kwargs['key_cv'], dest_kwargs['value_cv']
+        s_row[1], dest_kwargs['key_cv'], dest_kwargs['value_cv']
     )
     new_dest_kwargs = copy.copy(dest_kwargs)
     new_dest_kwargs['key_cv'] = new_key_cv
@@ -2918,62 +2920,40 @@ def do_diff_sync(t_index, s_rows, d_rows):
     Parameters:
         t_index: the index of the relevant template in the templates
                  setting
-        s_rows: a sequence of row tuples from the source database's
-                query function
-        d_rows: a sequence of row tuples from the destination database's
-                query function
+        s_rows: a sequence of tuples, each in the format (number of
+                keys, a row tuple from the source database's query
+                function
+        d_rows: a sequence of tuples, each in the format (number of
+                keys, a tow tuple from the destination database's query
+                function
 
     Dependencies:
-        config settings: action, reverse, bidir, templates
-        globals: (some of) T_*
-        functions: key_filter(), log_diff(), do_sync()
+        config settings: action, bidir, templates
+        globals: T_MULTIPLE_IDX
+        functions: log_diff(), do_sync()
         modules: nori
-        Python: 2.0/3.2, for callable()
 
     """
 
     # get settings
     template = nori.core.cfg['templates'][t_index]
     t_multiple = template[T_MULTIPLE_IDX]
-    if not nori.core.cfg['reverse']:
-        source_kwargs = template[T_S_QUERY_ARGS_IDX][1]
-        to_dest_func = template[T_TO_D_FUNC_IDX]
-        dest_kwargs = template[T_D_QUERY_ARGS_IDX][1]
-        to_source_func = template[T_TO_S_FUNC_IDX]
-    else:
-        source_kwargs = template[T_D_QUERY_ARGS_IDX][1]
-        to_dest_func = template[T_TO_S_FUNC_IDX]
-        dest_kwargs = template[T_S_QUERY_ARGS_IDX][1]
-        to_source_func = template[T_TO_D_FUNC_IDX]
 
     # diff/sync and check for missing rows in the destination DB
     global_callback_needed = False
     for s_row in s_rows:
-        # apply transform
-        if to_dest_func and callable(to_dest_func):
-            s_row = to_dest_func(template, s_row)
-
-        # filter by keys
-        if not key_filter(t_index, source_kwargs['key_cv'], s_row):
-            continue
-
         s_found = False
-        s_keys = s_row[0:len(source_kwargs['key_cv'])]
-        s_vals = s_row[len(source_kwargs['key_cv']):]
+        s_num_keys = s_row[0]
+        s_data = s_row[1]
+        s_keys = s_data[0:s_num_keys]
+        s_vals = s_data[s_num_keys:]
         if nori.core.cfg['bidir']:
             d_found = []
         for di, d_row in enumerate(d_rows):
-            # apply transform
-            if to_source_func and callable(to_source_func):
-                d_row = to_source_func(template, d_row)
-
-            # filter by keys
-            if not key_filter(t_index, dest_kwargs['key_cv'], d_row):
-                continue
-
-            # the actual work
-            d_keys = d_row[0:len(dest_kwargs['key_cv'])]
-            d_vals = d_row[len(dest_kwargs['key_cv']):]
+            d_num_keys = d_row[0]
+            d_data = d_row[1]
+            d_keys = d_data[0:d_num_keys]
+            d_vals = d_data[d_num_keys:]
             if not t_multiple:
                 if d_keys == s_keys:
                     s_found = True
@@ -3028,9 +3008,9 @@ def run_mode_hook():
                          destdb_change_callback,
                          destdb_change_callback_args
         globals: (some of) T_*, diff_dict, sourcedb, destdb
-        functions: generic_db_query(), drupal_db_query(), log_diff(),
-                   do_diff_report(), do_diff_sync(), (functions in
-                   templates), (global callback functions)
+        functions: generic_db_query(), drupal_db_query(), key_filter(),
+                   log_diff(), do_diff_report(), do_diff_sync(), (functions
+                   in templates), (global callback functions)
         modules: nori
         Python: 2.0/3.2, for callable()
 
@@ -3058,19 +3038,23 @@ def run_mode_hook():
             source_func = template[T_S_QUERY_FUNC_IDX]
             source_args = template[T_S_QUERY_ARGS_IDX][0]
             source_kwargs = template[T_S_QUERY_ARGS_IDX][1]
+            to_dest_func = template[T_TO_D_FUNC_IDX]
             dest_type = template[T_D_TYPE_IDX]
             dest_func = template[T_D_QUERY_FUNC_IDX]
             dest_args = template[T_D_QUERY_ARGS_IDX][0]
             dest_kwargs = template[T_D_QUERY_ARGS_IDX][1]
+            to_source_func = template[T_TO_S_FUNC_IDX]
         else:
             source_type = template[T_D_TYPE_IDX]
             source_func = template[T_D_QUERY_FUNC_IDX]
             source_args = template[T_D_QUERY_ARGS_IDX][0]
             source_kwargs = template[T_D_QUERY_ARGS_IDX][1]
+            to_dest_func = template[T_TO_S_FUNC_IDX]
             dest_type = template[T_S_TYPE_IDX]
             dest_func = template[T_S_QUERY_FUNC_IDX]
             dest_args = template[T_S_QUERY_ARGS_IDX][0]
             dest_kwargs = template[T_S_QUERY_ARGS_IDX][1]
+            to_source_func = template[T_TO_D_FUNC_IDX]
 
         # filter by template
         if (nori.cfg['template_mode'] == 'include' and
@@ -3093,20 +3077,50 @@ def run_mode_hook():
                 dest_func = drupal_db_query
 
         # get the source data
-        s_rows = source_func(*source_args, db_obj=s_db, mode='read',
-                             **source_kwargs)
-        if s_rows is None:
+        s_rows_raw = source_func(*source_args, db_obj=s_db, mode='read',
+                                 **source_kwargs)
+        if s_rows_raw is None:
             # shouldn't actually happen; errors will cause the script to
             # exit before this, as currently written
             break
 
+        # s_rows is a list of tuples in the format (num_keys, data), where
+        # the data is a raw row (a tuple) from source_func())
+        s_rows = []
+        for s_row_raw in s_rows_raw:
+            # apply transform
+            if to_dest_func and callable(to_dest_func):
+                s_num_keys, s_row = to_dest_func(template, s_row_raw)
+
+            # filter by keys
+            if not key_filter(t_index, s_num_keys, s_row):
+                continue
+
+            # add to the list
+            s_rows.append((s_num_keys, s_row))
+
         # get the destination data
-        d_rows = dest_func(*dest_args, db_obj=d_db, mode='read',
-                           **dest_kwargs)
-        if d_rows is None:
+        d_rows_raw = dest_func(*dest_args, db_obj=d_db, mode='read',
+                               **dest_kwargs)
+        if d_rows_raw is None:
             # shouldn't actually happen; errors will cause the
             # script to exit before this, as currently written
             break
+
+        # d_rows is a list of tuples in the format (num_keys, data), where
+        # the data is a raw row (a tuple) from dest_func())
+        d_rows = []
+        for d_row_raw in d_rows_raw:
+            # apply transform
+            if to_source_func and callable(to_source_func):
+                d_num_keys, d_row = to_source_func(template, d_row_raw)
+
+            # filter by keys
+            if not key_filter(t_index, d_num_keys, d_row):
+                continue
+
+            # add to the list
+            d_rows.append((d_num_keys, d_row))
 
         # dispatch the actual diff(s)/sync(s)
         global_callback_needed = False
@@ -3116,17 +3130,19 @@ def run_mode_hook():
         else:
             # group by keys
             s_row_groups = {}
-            s_num_keys = len(source_kwargs['key_cv'])
             for s_row in s_rows:
-                if s_row[0:s_num_keys] not in s_row_groups:
-                    s_row_groups[s_row[0:s_num_keys]] = []
-                s_row_groups[s_row[0:s_num_keys]].append(s_row)
+                s_num_keys = s_row[0]
+                s_data = s_row[1]
+                if s_data[0:s_num_keys] not in s_row_groups:
+                    s_row_groups[s_data[0:s_num_keys]] = []
+                s_row_groups[s_data[0:s_num_keys]].append(s_row)
             d_row_groups = {}
-            d_num_keys = len(dest_kwargs['key_cv'])
             for d_row in d_rows:
-                if d_row[0:d_num_keys] not in d_row_groups:
-                    d_row_groups[d_row[0:d_num_keys]] = []
-                d_row_groups[d_row[0:d_num_keys]].append(d_row)
+                d_num_keys = d_row[0]
+                d_data = d_row[1]
+                if d_data[0:d_num_keys] not in d_row_groups:
+                    d_row_groups[d_data[0:d_num_keys]] = []
+                d_row_groups[d_data[0:d_num_keys]].append(d_row)
 
             # dispatch by group
             d_keys_found = []
