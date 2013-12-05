@@ -2699,7 +2699,7 @@ def log_diff(template_index, exists_in_source, source_row, exists_in_dest,
         diff_k = template_index
         diff_i = len(diff_dict[template_index]) - 1
     elif nori.core.cfg['report_order'] == 'keys':
-        keys_str = ''
+        keys_str = ()
         if source_row is not None:
             num_keys = source_row[0]
             source_data = source_row[1]
@@ -2714,7 +2714,7 @@ def log_diff(template_index, exists_in_source, source_row, exists_in_dest,
                                       source_row, exists_in_dest, dest_row,
                                       None))
         diff_k = keys_tuple
-        diff_i = len(diff_dict[keys_str]) - 1
+        diff_i = len(diff_dict[keys_tuple]) - 1
     nori.core.status_logger.info(
         'Diff found for template {0} ({1}):\nS: {2}\nD: {3}' .
         format(template_index,
@@ -2802,7 +2802,7 @@ def render_diff_report():
                 else:
                     changed_str = 'changed'
                 diff_report += (
-                    'Source: {0}\nDest: {1}\nStatus: {2}changed\n\n' .
+                    'Source: {0}\nDest: {1}\nStatus: {2}\n\n' .
                     format(source_str, dest_str, changed_str)
                 )
             diff_report += '\n'
@@ -2846,7 +2846,7 @@ def render_diff_report():
                     changed_str = 'changed'
                 diff_report += (
                     'Template: {0}\nSource: {1}\nDest: {2}\n'
-                    'Status: {3}changed\n\n' .
+                    'Status: {3}\n\n' .
                     format(template[T_NAME_IDX], source_str, dest_str,
                            changed_str)
                 )
