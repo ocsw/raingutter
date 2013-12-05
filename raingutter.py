@@ -110,9 +110,10 @@ EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #       exists_in_dest, dest_row, has_been_changed)
 # depending on the report_order config setting.
 # The exists_in_source / exists in dest elements are booleans, but can
-# also be None in the case of a multiple-rows template  with rows that
+# also be None in the case of a multiple-rows template with rows that
 # don't even have key matches (see the templates setting, below).
-#
+# The has_been_changed element can be True (fully changed), False
+# (partly changed), or None (unchanged).
 diff_dict = collections.OrderedDict()
 
 
@@ -242,7 +243,8 @@ other *args and **kwargs:
             appropriate transform function (see below); the values are
             optional in 'read' mode)
     value_cv: similar to key_cv, but for the 'value' columns; the third
-              elements of the tuples are only used in 'update' mode
+              elements of the tuples are only used in the 'update' and
+              'insert' modes
 Note that the format of the column names may differ between the two
 databases, and the values may also require transformation (see below).
 What matters is that the sets of key and value columns for each database
@@ -269,8 +271,9 @@ retrieved in sequence (i.e., two rows for the same keys may not be separated
 by a row for different keys; this typically requires an ORDER BY clause in
 SQL).
 
-In 'update' and 'insert' modes, the query functions must return True or
-False to indicate success or failure.
+In 'update' and 'insert' modes, the query functions must return a tuple of
+(number_of_successes, number_of_failures).  (They will generally have to
+loop over the value_cv columns rather than doing them all at once.)
 
 The transform functions, if not None, must take the following parameters:
     template: the complete template entry for this data
@@ -1080,7 +1083,8 @@ Exiting.'''.format(*map(nori.pps, [db_obj, mode, tables, key_cv, value_cv,
         return ret[1]
 
     if mode == 'update':
-        ret = True
+        successes = 0
+        failures = 0
         for i, cv in enumerate(value_cv):
             q = get_update_query(tables, key_cv, [value_cv[i]], where_str)
             up_ret = db_obj.execute(None, query_str, query_args,
@@ -1088,7 +1092,7 @@ Exiting.'''.format(*map(nori.pps, [db_obj, mode, tables, key_cv, value_cv,
             if not up_ret:
                 # eventually, there should be an option for this case:
                 # exit or continue? (currently, won't be reached)
-                ret = False
+                failures += 1
             elif db_obj.cur.rowcount == 0:
                 # there was no row there to update, have to insert it
                 q = get_insert_query(tables, key_cv, [value_cv[i]],
@@ -1098,11 +1102,16 @@ Exiting.'''.format(*map(nori.pps, [db_obj, mode, tables, key_cv, value_cv,
                 if not in_ret:
                     # eventually, there should be an option for this case:
                     # exit or continue? (currently, won't be reached)
-                    ret = False
-        return ret
+                    failures += 1
+                else:
+                    successes += 1
+            else:
+                successes += 1
+        return (successes, failures)
 
     if mode == 'insert':
-        ret = True
+        successes = 0
+        failures = 0
         for i, cv in enumerate(value_cv):
             q = get_insert_query(tables, key_cv, [value_cv[i]], where_str)
             in_ret = db_obj.execute(None, query_str, query_args,
@@ -1110,8 +1119,10 @@ Exiting.'''.format(*map(nori.pps, [db_obj, mode, tables, key_cv, value_cv,
             if not in_ret:
                 # eventually, there should be an option for this case:
                 # exit or continue? (currently, won't be reached)
-                ret = False
-        return ret
+                failures += 1
+            else:
+                successes += 1
+        return (successes, failures)
 
 
 def get_select_query(tables, key_cv, value_cv, where_str=None,
@@ -1363,14 +1374,15 @@ Exiting.'''.format(*map(nori.pps, [db_obj, mode, key_cv, value_cv,
         return drupal_db_read(db_obj, key_cv, value_cv)
 
     if mode == 'update':
-        ret = True
+        successes = 0
+        failures = 0
         for i, cv in enumerate(value_cv):
             up_ret = drupal_db_update(db_obj, key_cv, [value_cv[i]],
                                       no_replicate)
             if not up_ret:
                 # eventually, there should be an option for this case:
                 # exit or continue? (currently, won't be reached)
-                ret = False
+                failures += 1
             elif db_obj.cur.rowcount == 0:
                 # there was no row there to update, have to insert it
                 in_ret = drupal_db_insert(db_obj, key_cv, [value_cv[i]],
@@ -1378,19 +1390,26 @@ Exiting.'''.format(*map(nori.pps, [db_obj, mode, key_cv, value_cv,
                 if not in_ret:
                     # eventually, there should be an option for this case:
                     # exit or continue? (currently, won't be reached)
-                    ret = False
-        return ret
+                    failures += 1
+                else:
+                    successes += 1
+            else:
+                successes += 1
+        return (successes, failures)
 
     if mode == 'insert':
-        ret = True
+        successes = 0
+        failures = 0
         for i, cv in enumerate(value_cv):
             in_ret = drupal_db_insert(db_obj, key_cv, [value_cv[i]],
                                       no_replicate)
             if not in_ret:
                 # eventually, there should be an option for this case:
                 # exit or continue? (currently, won't be reached)
-                ret = False
-        return ret
+                failures += 1
+            else:
+                successes += 1
+        return (successes, failures)
 
 
 def drupal_db_read(db_obj, key_cv, value_cv):
@@ -2646,7 +2665,7 @@ def log_diff(template_index, exists_in_source, source_row, exists_in_dest,
         if template_index not in diff_dict:
             diff_dict[template_index] = []
         diff_dict[template_index].append((exists_in_source, source_row,
-                                          exists_in_dest, dest_row, False))
+                                          exists_in_dest, dest_row, None))
         diff_k = template_index
         diff_i = len(diff_dict[template_index]) - 1
     elif nori.core.cfg['report_order'] == 'keys':
@@ -2663,7 +2682,7 @@ def log_diff(template_index, exists_in_source, source_row, exists_in_dest,
             diff_dict[keys_tuple] = []
         diff_dict[keys_tuple].append((template_index, exists_in_source,
                                       source_row, exists_in_dest, dest_row,
-                                      False))
+                                      None))
         diff_k = keys_tuple
         diff_i = len(diff_dict[keys_str]) - 1
     nori.core.status_logger.info(
@@ -2680,12 +2699,14 @@ def log_diff(template_index, exists_in_source, source_row, exists_in_dest,
     return (diff_k, diff_i)
 
 
-def update_diff(diff_k, diff_i):
+def update_diff(diff_k, diff_i, changed):
     """
     Mark a diff as updated.
     Parameters:
         diff_k: the key used in diff_dict
         diff_i: the index in the list
+        changed: can be True (fully changed), False (partly changed), or
+                 None (unchanged)
     Dependencies:
         config settings: report_order
         globals: diff_dict
@@ -2694,10 +2715,10 @@ def update_diff(diff_k, diff_i):
     diff_t = diff_dict[diff_k][diff_i]
     if nori.core.cfg['report_order'] == 'template':
         diff_dict[diff_k][diff_i] = ((diff_t[0], diff_t[1], diff_t[2],
-                                      diff_t[3], True))
+                                      diff_t[3], changed))
     elif nori.core.cfg['report_order'] == 'keys':
         diff_dict[diff_k][diff_i] = ((diff_t[0], diff_t[1], diff_t[2],
-                                      diff_t[3], diff_t[4], True))
+                                      diff_t[3], diff_t[4], changed))
 
 
 def render_diff_report():
@@ -2742,10 +2763,17 @@ def render_diff_report():
                     dest_str = '[no key match in destination database]'
                 else:
                     dest_str = '[no match in destination database]'
+                if has_been_changed is None:
+                    changed_str = 'unchanged'
+                elif not has_been_changed:
+                    changed_str = (
+                        'partially changed - action may be needed!'
+                    )
+                else:
+                    changed_str = 'changed'
                 diff_report += (
                     'Source: {0}\nDest: {1}\nStatus: {2}changed\n\n' .
-                    format(source_str, dest_str,
-                           'un' if not has_been_changed else '')
+                    format(source_str, dest_str, changed_str)
                 )
             diff_report += '\n'
     elif nori.core.cfg['report_order'] == 'keys':
@@ -2778,11 +2806,19 @@ def render_diff_report():
                     dest_str = '[no key match in destination database]'
                 else:
                     dest_str = '[no match in destination database]'
+                if has_been_changed is None:
+                    changed_str = 'unchanged'
+                elif not has_been_changed:
+                    changed_str = (
+                        'partially changed - action may be needed!'
+                    )
+                else:
+                    changed_str = 'changed'
                 diff_report += (
                     'Template: {0}\nSource: {1}\nDest: {2}\n'
                     'Status: {3}changed\n\n' .
                     format(template[T_NAME_IDX], source_str, dest_str,
-                           'un' if not has_been_changed else '')
+                           changed_str)
                 )
             diff_report += '\n'
     return diff_report.strip()
@@ -2817,7 +2853,8 @@ def do_sync(t_index, s_row, diff_k, diff_i):
     """
     Actually sync data to the destination database.
 
-    Returns a tuple: (success?, global_destdb_callback_needed?).
+    Returns a boolean indicating if the global destdb callback is
+    needed.
 
     Parameters:
         t_index: the index of the relevant template in the templates
@@ -2855,6 +2892,7 @@ def do_sync(t_index, s_row, diff_k, diff_i):
         dest_kwargs = template[T_S_QUERY_ARGS_IDX][1]
         dest_change_func = template[T_S_CHANGE_FUNC_IDX]
         d_db = sourcedb
+    mode = 'insert' if t_multiple else 'update'
 
     # handle unspecified function
     if dest_func is None:
@@ -2881,26 +2919,30 @@ def do_sync(t_index, s_row, diff_k, diff_i):
             'Updating destination database...'
         )
     global_callback_needed = False
-    ret = dest_func(*dest_args, db_obj=d_db,
-                    mode='insert' if t_multiple else 'update',
-                    **new_dest_kwargs)
-    if ret:
-        update_diff(diff_k, diff_i)
+    successes, failures = dest_func(*dest_args, db_obj=d_db, mode=mode,
+                                    **new_dest_kwargs)
+    if failures == 0:  # all succeeded
+        status = True
+        nori.core.status_logger.info(mode.capitalize() + ' succeeded.')
+    elif successes > 0:  # some succeeded, some failed
+        status = False
+        nori.core.status_logger.info(mode.capitalize() +
+                                     ' partially succeeded.')
+    elif successes == 0:  # all failed
+        status = None
+        nori.core.status_logger.info(mode.capitalize() + ' failed.')
+    if status is not None:
         global_callback_needed = True
-        if t_multiple:
-            nori.core.status_logger.info('Insert complete.')
-        else:
-            nori.core.status_logger.info('Update complete.')
-    # DB code will handle errors
+        update_diff(diff_k, diff_i, status)
     if not (dest_change_func and callable(dest_change_func)):
-        return (ret, global_callback_needed)
+        return global_callback_needed
 
     # template-level change callback
-    if not ret:
+    if status is None:
         nori.core.status_logger.info(
             'Skipping change callback for this template.'
         )
-        return (ret, global_callback_needed)
+        return global_callback_needed
     nori.core.status_logger.info(
         'Calling change callback for this template...'
     )
@@ -2908,7 +2950,7 @@ def do_sync(t_index, s_row, diff_k, diff_i):
     nori.core.status_logger.info(
         'Callback complete.' if ret else 'Callback failed.'
     )
-    return (ret, global_callback_needed)
+    return global_callback_needed
 
 
 def do_diff_sync(t_index, s_rows, d_rows):
@@ -2965,11 +3007,7 @@ def do_diff_sync(t_index, s_rows, d_rows):
                         diff_k, diff_i = log_diff(t_index, True, s_row,
                                                   True, d_row)
                         if nori.core.cfg['action'] == 'sync':
-                            ret = do_sync(t_index, s_row, diff_k, diff_i)
-                            # ignore ret[0] for now; errors will cause
-                            # the script to exit before this, as
-                            # currently written
-                            if ret[1]:
+                            if do_sync(t_index, s_row, diff_k, diff_i):
                                 global_callback_needed = True
                     break
             else:  # multiple-row matching
@@ -2983,10 +3021,7 @@ def do_diff_sync(t_index, s_rows, d_rows):
         if not s_found:
             log_diff(t_index, True, s_row, False, None)
             if t_multiple:
-                ret = do_sync(t_index, s_row, diff_k, diff_i)
-                # ignore ret[0] for now; errors will cause the script to
-                # exit before this, as currently written
-                if ret[1]:
+                if do_sync(t_index, s_row, diff_k, diff_i):
                     global_callback_needed = True
 
     # check for missing rows in the source DB
