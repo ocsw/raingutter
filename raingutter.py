@@ -272,7 +272,7 @@ SQL).
 In 'update' and 'insert' modes, the query functions must return True or
 False to indicate success or failure.
 
-The transform functions must take the following parameters:
+The transform functions, if not None, must take the following parameters:
     template: the complete template entry for this data
     row: a single row tuple from the results returned by the query function
          (see above)
@@ -280,8 +280,7 @@ and must return a tuple of (number_of_key_columns, data_row).  The row must
 be in the same format as the input, containing values suitable for
 comparison with or insertion into the opposite database.  In many cases,
 this will require no actual transformation, as the database connector will
-handle data-type conversion on both ends.  To do nothing, use:
-    lambda x, y, z: (y, z)
+handle data-type conversion on both ends.
 
 Both transform functions will be called before comparing data, so be sure
 that they both output the data in the same format.  This format must also
@@ -2498,8 +2497,10 @@ def check_key_list_match(key_mode, key_list, num_keys, row):
                   or 'exclude')
         key_list: the per-template or global key list to check for a
                   match
-        num_keys: the number of 'key' (as opposed to 'value') in the row
-        row: a single row from the results returned by a query function
+        num_keys: the number of 'key' (as opposed to 'value') elements
+                  in the row
+        row: a row tuple from the database results, as modified by the
+             transform function
         (see the description of the templates setting, above, for more
         details)
     Dependencies:
@@ -2549,9 +2550,10 @@ def key_filter(template_index, num_keys, row):
     Parameters:
         template_index: the index of the relevant template in the
                         templates setting
-        num_keys: the number of 'key' (as opposed to 'value') in the row
-        row: a single row from the results returned by the query
-             function
+        num_keys: the number of 'key' (as opposed to 'value') elements
+                  in the row
+        row: a row tuple from the database results, as modified by the
+             transform function
         (see the description of the templates setting, above, for more
         details)
 
@@ -2587,8 +2589,8 @@ def key_value_copy(source_data, dest_key_cv, dest_value_cv):
     same length.
     Returns a tuple of (key_cv, value_cv).
     Parameters:
-        source_data: a tuple of 'key' and 'value' values from the source
-                     DB query function
+        source_data: a row tuple from the source database results, as
+                     modified by the transform function
         dest_key_cv: the key cv sequence from the template for the
                      destination database
         dest_value_cv: the value cv sequence from the template for the
@@ -2628,16 +2630,15 @@ def log_diff(template_index, exists_in_source, source_row, exists_in_dest,
                         templates setting
         exists_in_source: True if the relevant key exists in the source
                           database, otherwise False
-        source_row: a tuple of (number of key columns, results row from
-                    the source DB's query function)
+        source_row: a tuple of (number of key columns, transformed
+                    results tuple from the source DB's query function)
         exists_in_dest: True if the relevant key exists in the
                         destination database, otherwise False
-        dest_row: a tuple of (number of key columns, results row from
-                  the destination DB's query function)
+        dest_row: a tuple of (number of key columns, transformed results
+                  tuple from the destination DB's query function)
     Dependencies:
         config settings: templates, report_order
-        globals: diff_dict, T_S_QUERY_ARGS_IDX, T_D_QUERY_ARGS_IDX,
-                 T_NAME_IDX
+        globals: diff_dict, T_NAME_IDX
         modules: nori
     """
     template = nori.core.cfg['templates'][template_index]
@@ -2705,7 +2706,7 @@ def render_diff_report():
     Returns a string.
     Dependencies:
         config settings: action, templates, report_order
-        globals: diff_dict, T_NAME_IDX, T_S_QUERY_ARGS_IDX
+        globals: diff_dict, T_NAME_IDX
         modules: nori
     """
     if nori.core.cfg['action'] == 'diff':
@@ -2821,7 +2822,8 @@ def do_sync(t_index, s_row, diff_k, diff_i):
     Parameters:
         t_index: the index of the relevant template in the templates
                  setting
-        s_row: a tuple of (number of keys, the source data tuple)
+        s_row: a tuple of (number of keys, transformed source data
+               tuple)
         diff_k: the key of the diff list within diff_dict
         diff_i: the index of the diff within the list indicated by
                 diff_k
@@ -2921,11 +2923,11 @@ def do_diff_sync(t_index, s_rows, d_rows):
         t_index: the index of the relevant template in the templates
                  setting
         s_rows: a sequence of tuples, each in the format (number of
-                keys, a row tuple from the source database's query
-                function
+                keys, transformed row tuple from the source database's
+                query results)
         d_rows: a sequence of tuples, each in the format (number of
-                keys, a tow tuple from the destination database's query
-                function
+                keys, transformed row tuple from the destination
+                database's query results)
 
     Dependencies:
         config settings: action, bidir, templates
