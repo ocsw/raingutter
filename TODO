@@ -1,14 +1,10 @@
 TODO
 
-u, i: retvals: num success/fail?
-
 inserts
-    multiples: only one target?  only one table?
     Drupal cardinality for fields
     default for all fields for nodes
-drupal read:
-    add node -> title, fc -> label, etc.
-    inner joins for relations, etc?
+inner joins for relations, etc?
+add node -> title, fc -> label, etc.
 configs for OCS fields
 testing
 
@@ -37,3 +33,5 @@ more examples/sql, esp for drupal?
 docstring / USAGE / mod notes re chains
 
 error handling: exit/skip?
+
+autocommit options
