@@ -1182,13 +1182,34 @@ def generic_db_update(db_obj, db_cur, tables, key_cv, value_cv,
     """
     Do the actual work for generic DB updates.
 
+    The value_cv sequence may only have one element.
+
     Parameters:
         see generic_db_query()
 
     Dependencies:
-        modules: nori
+        modules: sys, nori
 
     """
+
+    # sanity check
+    if len(value_cv) != 1:
+        nori.core.email_logger.error(
+'''Internal Error: multiple value_cv entries supplied in call to
+generic_db_update(); call was (in expanded notation):
+
+generic_db_update(db_obj={0},
+                 db_cur={1},
+                 tables={2},
+                 key_cv={3},
+                 value_cv={4},
+                 where_str={5},
+                 no_replicate={6})
+
+Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, tables, key_cv, value_cv,
+                                   where_str, no_replicate]))
+        )
+        sys.exit(nori.core.exitvals['internal']['num'])
 
     # assemble the query string and argument list
     query_args = []
@@ -1198,12 +1219,8 @@ def generic_db_update(db_obj, db_cur, tables, key_cv, value_cv,
     else:
         query_str += tables
     query_str += '\n'
-    set_parts = []
-    for cv in value_cv:
-        if len(cv) > 2:
-            set_parts.append('{0} = %'.format(cv[0]))
-            query_args.append(cv[2])
-    query_str += 'SET ' + ', '.join(set_parts) + '\n'
+    query_str += 'SET {0} = %s'.format(value_cv[0][0]) +  '\n'
+    query_args.append(value_cv[0][2])
     where_parts = []
     if where_str:
         where_parts.append('(' + where_str + ')')
@@ -1224,13 +1241,34 @@ def generic_db_insert(db_obj, db_cur, tables, key_cv, value_cv,
     """
     Do the actual work for generic DB inserts.
 
+    The value_cv sequence may only have one element.
+
     Parameters:
         see generic_db_query()
 
     Dependencies:
-        modules: nori
+        modules: sys, nori
 
     """
+
+    # sanity check
+    if len(value_cv) != 1:
+        nori.core.email_logger.error(
+'''Internal Error: multiple value_cv entries supplied in call to
+generic_db_update(); call was (in expanded notation):
+
+generic_db_update(db_obj={0},
+                 db_cur={1},
+                 tables={2},
+                 key_cv={3},
+                 value_cv={4},
+                 where_str={5},
+                 no_replicate={6})
+
+Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, tables, key_cv, value_cv,
+                                   where_str, no_replicate]))
+        )
+        sys.exit(nori.core.exitvals['internal']['num'])
 
     # assemble the query string and argument list
     query_args = []
