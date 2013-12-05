@@ -233,9 +233,10 @@ will attempt to add the source row to the destination database, but it
 will not delete anything from the destination database; this must be
 done by other means.
 
-The DB query functions must take three keyword arguments in addition to any
+The DB query functions must take these keyword arguments in addition to any
 other *args and **kwargs:
-    db_obj: the database object to use
+    db_obj: the database connection object to use
+    db_cur: the database cursor object to use
     mode: 'read', 'update', or 'insert'
     key_cv: a sequence of 2- or 3-tuples indicating the names of the
             'key' columns, the data types of the columns, and the values
@@ -293,6 +294,8 @@ The change callback functions must be either None, or else functions to call
 if this template has caused any changes in the database for a given row.
 This is particularly important for emulating computed fields in a Drupal
 database.  Change callbacks must accept the following:
+    db_obj: the database connection object to use
+    db_cur: the database cursor object to use
     template: the complete template entry for this data
     row: a (num_keys, data_tuple) tuple, as returned by the transform
          functions (see above)
@@ -401,6 +404,11 @@ This is separate from the per-template functions (see above), and is
 intended for overall cleanup.  In particular, it is useful for clearing
 Drupal caches.
 
+The callback function must take these keyword arguments in addition to any
+other *args and **kwargs:
+    db_obj: the database connection object to use
+    db_cur: the database cursor object to use
+
 Called at most once, after the sync is complete.
 '''
     ),
@@ -413,9 +421,6 @@ nori.core.config_settings['sourcedb_change_callback_args'] = dict(
 The arguments for the source-DB change callback.
 
 Must be a tuple of (*args, **kwargs).
-
-The first argument supplied to the function (before *args) will be the
-database handle.
 
 Ignored if source_db_change_callback is None.
 '''
@@ -432,6 +437,11 @@ This is separate from the per-template functions (see above), and is
 intended for overall cleanup.  In particular, it is useful for clearing
 Drupal caches.
 
+The callback function must take these keyword arguments in addition to any
+other *args and **kwargs:
+    db_obj: the database connection object to use
+    db_cur: the database cursor object to use
+
 Called at most once, after the sync is complete.
 '''
     ),
@@ -444,9 +454,6 @@ nori.core.config_settings['destdb_change_callback_args'] = dict(
 The arguments for the destination-DB change callback.
 
 Must be a tuple of (*args, **kwargs).
-
-The first argument supplied to the function (before *args) will be the
-database handle.
 
 Ignored if source_db_change_callback is None.
 '''
@@ -1003,8 +1010,9 @@ def init_reporting():
 # functions explain what's going on)
 #
 
-def generic_db_query(db_obj, mode, tables, key_cv, value_cv, where_str=None,
-                     more_str=None, more_args=[], no_replicate=False):
+def generic_db_query(db_obj, db_cur, mode, tables, key_cv, value_cv,
+                     where_str=None, more_str=None, more_args=[],
+                     no_replicate=False):
 
     """
     Generic 'DB query function' for use in templates.
@@ -1012,7 +1020,8 @@ def generic_db_query(db_obj, mode, tables, key_cv, value_cv, where_str=None,
     See the description of the 'templates' config setting.
 
     Parameters:
-        db_obj: the database object to use
+        db_obj: the database connection object to use
+        db_cur: the database cursor object to use
         mode: 'read', 'update', or 'insert'
         tables: either a sequence of table names, which will be joined
                 with commas (INNER JOIN), or a string which will be used
@@ -1053,39 +1062,40 @@ def generic_db_query(db_obj, mode, tables, key_cv, value_cv, where_str=None,
 call was (in expanded notation):
 
 generic_db_query(db_obj={0},
-                 mode={1},
-                 tables={2},
-                 key_cv={3},
-                 value_cv={4},
-                 where_str={5},
-                 more_str={6},
-                 more_args={7},
-                 no_replicate={8})
+                 db_cur={1},
+                 mode={2},
+                 tables={3},
+                 key_cv={4},
+                 value_cv={5},
+                 where_str={6},
+                 more_str={7},
+                 more_args={8},
+                 no_replicate={9})
 
-Exiting.'''.format(*map(nori.pps, [db_obj, mode, tables, key_cv, value_cv,
-                                   where_str, more_str, more_args,
+Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, mode, tables, key_cv,
+                                   value_cv, where_str, more_str, more_args,
                                    no_replicate]))
         )
         sys.exit(nori.core.exitvals['internal']['num'])
 
     if mode == 'read':
-        return generic_db_read(db_obj, tables, key_cv, value_cv, where_str,
-                               more_str, more_args)
+        return generic_db_read(db_obj, db_cur, tables, key_cv, value_cv,
+                               where_str, more_str, more_args)
 
     if mode == 'update':
         successes = 0
         failures = 0
         for i, cv in enumerate(value_cv):
-            up_ret = generic_db_update(db_obj, tables, key_cv,
+            up_ret = generic_db_update(db_obj, db_cur, tables, key_cv,
                                        [value_cv[i]], where_str,
                                        no_replicate)
             if not up_ret:
                 # eventually, there should be an option for this case:
                 # exit or continue? (currently, won't be reached)
                 failures += 1
-            elif db_obj.cur.rowcount == 0:
+            elif db_cur.rowcount == 0:
                 # there was no row there to update, have to insert it
-                in_ret = generic_db_insert(db_obj, tables, key_cv,
+                in_ret = generic_db_insert(db_obj, db_cur, tables, key_cv,
                                            [value_cv[i]], where_str,
                                            no_replicate)
                 if not in_ret:
@@ -1103,7 +1113,7 @@ Exiting.'''.format(*map(nori.pps, [db_obj, mode, tables, key_cv, value_cv,
         successes = 0
         failures = 0
         for i, cv in enumerate(value_cv):
-            in_ret = generic_db_insert(db_obj, tables, key_cv,
+            in_ret = generic_db_insert(db_obj, db_cur, tables, key_cv,
                                        [value_cv[i]], where_str,
                                        no_replicate)
             if not in_ret:
@@ -1115,8 +1125,8 @@ Exiting.'''.format(*map(nori.pps, [db_obj, mode, tables, key_cv, value_cv,
         return (successes, failures)
 
 
-def generic_db_read(db_obj, tables, key_cv, value_cv, where_str=None,
-                    more_str=None, more_args=[])
+def generic_db_read(db_obj, db_cur, tables, key_cv, value_cv,
+                    where_str=None, more_str=None, more_args=[]):
 
     """
     Do the actual work for generic DB reads.
@@ -1155,10 +1165,10 @@ def generic_db_read(db_obj, tables, key_cv, value_cv, where_str=None,
         query_args += more_args
 
     # execute the query
-    if not db_obj.execute(None, query_str.strip(), query_args,
+    if not db_obj.execute(db_cur, query_str.strip(), query_args,
                           has_results=True):
         return None
-    ret = db_obj.fetchall(None)
+    ret = db_obj.fetchall(db_cur)
     if not ret[0]:
         return None
     if not ret[1]:
@@ -1166,8 +1176,8 @@ def generic_db_read(db_obj, tables, key_cv, value_cv, where_str=None,
     return ret[1]
 
 
-def generic_db_update(db_obj, tables, key_cv, value_cv, where_str=None,
-                      no_replicate=False)
+def generic_db_update(db_obj, db_cur, tables, key_cv, value_cv,
+                      where_str=None, no_replicate=False):
 
     """
     Do the actual work for generic DB updates.
@@ -1204,12 +1214,12 @@ def generic_db_update(db_obj, tables, key_cv, value_cv, where_str=None,
     query_str += 'WHERE ' + '\nAND\n'.join(where_parts) + '\n'
 
     # execute the query
-    return db_obj.execute(None, query_str.split(), query_args,
+    return db_obj.execute(db_cur, query_str.split(), query_args,
                           has_results=False)
 
 
-def generic_db_insert(db_obj, tables, key_cv, value_cv, where_str=None,
-                      no_replicate=False)
+def generic_db_insert(db_obj, db_cur, tables, key_cv, value_cv,
+                      where_str=None, no_replicate=False):
 
     """
     Do the actual work for generic DB inserts.
@@ -1246,11 +1256,12 @@ def generic_db_insert(db_obj, tables, key_cv, value_cv, where_str=None,
 #    query_str += 'WHERE ' + '\nAND\n'.join(where_parts) + '\n'
 
     # execute the query
-    return db_obj.execute(None, query_str.split(), query_args,
+    return db_obj.execute(db_cur, query_str.split(), query_args,
                           has_results=False)
 
 
-def drupal_db_query(db_obj, mode, key_cv, value_cv, no_replicate=False):
+def drupal_db_query(db_obj, db_cur, mode, key_cv, value_cv,
+                    no_replicate=False):
 
     """
     Drupal 'DB query function' for use in templates.
@@ -1359,7 +1370,8 @@ def drupal_db_query(db_obj, mode, key_cv, value_cv, no_replicate=False):
         ]
 
     Parameters:
-        db_obj: the database object to use
+        db_obj: the database connection object to use
+        db_cur: the database cursor object to use
         mode: 'read', 'update', or 'insert'
         key_cv: a sequence of 2- or 3-tuples indicating the names of the
                 'key' fields, their associated data types, and
@@ -1383,33 +1395,34 @@ def drupal_db_query(db_obj, mode, key_cv, value_cv, no_replicate=False):
 drupal_db_query(); call was (in expanded notation):
 
 drupal_db_query(db_obj={0},
-                mode={1},
-                key_cv={2},
-                value_cv={3},
-                no_replicate={4})
+                db_cur={1},
+                mode={2},
+                key_cv={3},
+                value_cv={4},
+                no_replicate={5})
 
-Exiting.'''.format(*map(nori.pps, [db_obj, mode, key_cv, value_cv,
+Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, mode, key_cv, value_cv,
                                    no_replicate]))
         )
         sys.exit(nori.core.exitvals['internal']['num'])
 
     if mode == 'read':
-        return drupal_db_read(db_obj, key_cv, value_cv)
+        return drupal_db_read(db_obj, db_cur, key_cv, value_cv)
 
     if mode == 'update':
         successes = 0
         failures = 0
         for i, cv in enumerate(value_cv):
-            up_ret = drupal_db_update(db_obj, key_cv, [value_cv[i]],
+            up_ret = drupal_db_update(db_obj, db_cur, key_cv, [value_cv[i]],
                                       no_replicate)
             if not up_ret:
                 # eventually, there should be an option for this case:
                 # exit or continue? (currently, won't be reached)
                 failures += 1
-            elif db_obj.cur.rowcount == 0:
+            elif db_cur.rowcount == 0:
                 # there was no row there to update, have to insert it
-                in_ret = drupal_db_insert(db_obj, key_cv, [value_cv[i]],
-                                          no_replicate)
+                in_ret = drupal_db_insert(db_obj, db_cur, key_cv,
+                                          [value_cv[i]], no_replicate)
                 if not in_ret:
                     # eventually, there should be an option for this
                     # case: exit or continue? (currently, won't be
@@ -1425,7 +1438,7 @@ Exiting.'''.format(*map(nori.pps, [db_obj, mode, key_cv, value_cv,
         successes = 0
         failures = 0
         for i, cv in enumerate(value_cv):
-            in_ret = drupal_db_insert(db_obj, key_cv, [value_cv[i]],
+            in_ret = drupal_db_insert(db_obj, db_cur, key_cv, [value_cv[i]],
                                       no_replicate)
             if not in_ret:
                 # eventually, there should be an option for this case:
@@ -1436,7 +1449,7 @@ Exiting.'''.format(*map(nori.pps, [db_obj, mode, key_cv, value_cv,
         return (successes, failures)
 
 
-def drupal_db_read(db_obj, key_cv, value_cv):
+def drupal_db_read(db_obj, db_cur, key_cv, value_cv):
 
     """
     Do the actual work for generic Drupal DB reads.
@@ -1463,10 +1476,11 @@ def drupal_db_read(db_obj, key_cv, value_cv):
 drupal_db_read(); call was (in expanded notation):
 
 drupal_db_read(db_obj={0},
-               key_cv={1},
-               value_cv={2})
+               db_cur={1},
+               key_cv={2},
+               value_cv={3})
 
-Exiting.'''.format(*map(nori.pps, [db_obj, key_cv, value_cv]))
+Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, key_cv, value_cv]))
         )
         sys.exit(nori.core.exitvals['internal']['num'])
 
@@ -2012,10 +2026,10 @@ ORDER BY node.title, node.nid, fcf.delta, {11}
 
     ######################## execute the query ########################
 
-    if not db_obj.execute(None, query_str.strip(), query_args,
+    if not db_obj.execute(db_cur, query_str.strip(), query_args,
                           has_results=True):
         return None
-    ret = db_obj.fetchall(None)
+    ret = db_obj.fetchall(db_cur)
     if not ret[0]:
         return None
     if not ret[1]:
@@ -2023,7 +2037,7 @@ ORDER BY node.title, node.nid, fcf.delta, {11}
     return ret[1]
 
 
-def drupal_db_update(db_obj, key_cv, value_cv, no_replicate=False):
+def drupal_db_update(db_obj, db_cur, key_cv, value_cv, no_replicate=False):
 
     """
     Do the actual work for generic Drupal DB updates.
@@ -2046,11 +2060,13 @@ def drupal_db_update(db_obj, key_cv, value_cv, no_replicate=False):
 drupal_db_update(); call was (in expanded notation):
 
 drupal_db_update(db_obj={0},
-                 key_cv={1},
-                 value_cv={2},
-                 no_replicate={3})
+                 db_cur={1},
+                 key_cv={2},
+                 value_cv={3},
+                 no_replicate={4})
 
-Exiting.'''.format(*map(nori.pps, [db_obj, key_cv, value_cv, no_replicate]))
+Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, key_cv, value_cv,
+                                   no_replicate]))
         )
         sys.exit(nori.core.exitvals['internal']['num'])
 
@@ -2062,11 +2078,13 @@ Exiting.'''.format(*map(nori.pps, [db_obj, key_cv, value_cv, no_replicate]))
 drupal_db_update(); call was (in expanded notation):
 
 drupal_db_update(db_obj={0},
-                 key_cv={1},
-                 value_cv={2},
-                 no_replicate={3})
+                 db_cur={1},
+                 key_cv={2},
+                 value_cv={3},
+                 no_replicate={4})
 
-Exiting.'''.format(*map(nori.pps, [db_obj, key_cv, value_cv, no_replicate]))
+Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, key_cv, value_cv,
+                                   no_replicate]))
         )
         sys.exit(nori.core.exitvals['internal']['num'])
 
@@ -2409,11 +2427,11 @@ AND (f.deleted = 0 OR f.deleted IS NULL)
 
     ######################## execute the query ########################
 
-    return db_obj.execute(None, query_str.strip(), query_args,
+    return db_obj.execute(db_cur, query_str.strip(), query_args,
                           has_results=False)
 
 
-def drupal_db_insert(db_obj, key_cv, value_cv, no_replicate=False):
+def drupal_db_insert(db_obj, db_cur, key_cv, value_cv, no_replicate=False):
 
     """
     Do the actual work for generic Drupal DB inserts.
@@ -2436,11 +2454,13 @@ def drupal_db_insert(db_obj, key_cv, value_cv, no_replicate=False):
 drupal_db_insert(); call was (in expanded notation):
 
 drupal_db_insert(db_obj={0},
-                 key_cv={1},
-                 value_cv={2},
-                 no_replicate={3})
+                 db_cur={1},
+                 key_cv={2},
+                 value_cv={3},
+                 no_replicate={4})
 
-Exiting.'''.format(*map(nori.pps, [db_obj, key_cv, value_cv, no_replicate]))
+Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, key_cv, value_cv,
+                                   no_replicate]))
         )
         sys.exit(nori.core.exitvals['internal']['num'])
 
@@ -2452,33 +2472,60 @@ Exiting.'''.format(*map(nori.pps, [db_obj, key_cv, value_cv, no_replicate]))
 drupal_db_insert(); call was (in expanded notation):
 
 drupal_db_insert(db_obj={0},
-                 key_cv={1},
-                 value_cv={2},
-                 no_replicate={3})
+                 db_cur={1},
+                 key_cv={2},
+                 value_cv={3},
+                 no_replicate={4})
 
-Exiting.'''.format(*map(nori.pps, [db_obj, key_cv, value_cv, no_replicate]))
+Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, key_cv, value_cv,
+                                   no_replicate]))
         )
         sys.exit(nori.core.exitvals['internal']['num'])
 
     
+    #
+    # node -> field (including term references)
+    #
+    #if chain_type == 'n-f':
+        
+
+    #
+    # node -> relation -> node
+    #
+    #elif chain_type == 'n-r-n':
+        
+
+    #
+    # node -> relation & node -> relation_field (incl. term refs)
+    #
+    #elif chain_type == 'n-rn-rf':
+        
+
+    #
+    # node -> fc -> field (including term references)
+    #
+    #elif chain_type == 'n-fc-f':
+        
 
 
 ###########################
 # other database functions
 ###########################
 
-def clear_drupal_cache(db_obj):
+def clear_drupal_cache(db_obj, db_cur):
     """
     Clear all caches in a Drupal database.
     Parameters:
-        db_obj: the database object to use
+        db_obj: the database connection object to use
+        db_cur: the database cursor object to use
     """
-    ret = db_obj.get_table_list(None)
+    ret = db_obj.get_table_list(db_cur)
     if not ret[0]:
         return False
     for table in ret[1]:
         if table[0].startswith('cache'):
-            ret = db_obj.execute(None, 'DELETE FROM {0};'.format(table[0]),
+            ret = db_obj.execute(db_cur,
+                                 'DELETE FROM {0};'.format(table[0]),
                                  has_results=False)
             print(ret)
             if not ret:
@@ -2831,7 +2878,7 @@ def do_diff_report():
 # the 'reverse' setting
 #
 
-def do_sync(t_index, s_row, diff_k, diff_i):
+def do_sync(t_index, s_row, d_db, d_cur, diff_k, diff_i):
 
     """
     Actually sync data to the destination database.
@@ -2844,6 +2891,8 @@ def do_sync(t_index, s_row, diff_k, diff_i):
                  setting
         s_row: a tuple of (number of keys, transformed source data
                tuple)
+        d_db: the connection object for the destination database
+        d_cur: the cursor object for the destination database
         diff_k: the key of the diff list within diff_dict
         diff_i: the index of the diff within the list indicated by
                 diff_k
@@ -2867,14 +2916,12 @@ def do_sync(t_index, s_row, diff_k, diff_i):
         dest_args = template[T_D_QUERY_ARGS_IDX][0]
         dest_kwargs = template[T_D_QUERY_ARGS_IDX][1]
         dest_change_func = template[T_D_CHANGE_FUNC_IDX]
-        d_db = destdb
     else:
         dest_type = template[T_S_TYPE_IDX]
         dest_func = template[T_S_QUERY_FUNC_IDX]
         dest_args = template[T_S_QUERY_ARGS_IDX][0]
         dest_kwargs = template[T_S_QUERY_ARGS_IDX][1]
         dest_change_func = template[T_S_CHANGE_FUNC_IDX]
-        d_db = sourcedb
     mode = 'insert' if t_multiple else 'update'
 
     # handle unspecified function
@@ -2902,8 +2949,8 @@ def do_sync(t_index, s_row, diff_k, diff_i):
             'Updating destination database...'
         )
     global_callback_needed = False
-    successes, failures = dest_func(*dest_args, db_obj=d_db, mode=mode,
-                                    **new_dest_kwargs)
+    successes, failures = dest_func(*dest_args, db_obj=d_db, db_cur=d_cur,
+                                    mode=mode, **new_dest_kwargs)
     if failures == 0:  # all succeeded
         status = True
         nori.core.status_logger.info(mode.capitalize() + ' succeeded.')
@@ -2936,7 +2983,7 @@ def do_sync(t_index, s_row, diff_k, diff_i):
     return global_callback_needed
 
 
-def do_diff_sync(t_index, s_rows, d_rows):
+def do_diff_sync(t_index, s_rows, d_rows, d_db, d_cur):
 
     """
     Diff, and if necessary sync, sets of rows from the two databases.
@@ -2953,6 +3000,8 @@ def do_diff_sync(t_index, s_rows, d_rows):
         d_rows: a sequence of tuples, each in the format (number of
                 keys, transformed row tuple from the destination
                 database's query results)
+        d_db: the connection object for the destination database
+        d_cur: the cursor object for the destination database
 
     Dependencies:
         config settings: action, bidir, templates
@@ -2990,7 +3039,8 @@ def do_diff_sync(t_index, s_rows, d_rows):
                         diff_k, diff_i = log_diff(t_index, True, s_row,
                                                   True, d_row)
                         if nori.core.cfg['action'] == 'sync':
-                            if do_sync(t_index, s_row, diff_k, diff_i):
+                            if do_sync(t_index, s_row, d_db, d_cur, diff_k,
+                                       diff_i):
                                 global_callback_needed = True
                     break
             else:  # multiple-row matching
@@ -3004,7 +3054,7 @@ def do_diff_sync(t_index, s_rows, d_rows):
         if not s_found:
             log_diff(t_index, True, s_row, False, None)
             if t_multiple:
-                if do_sync(t_index, s_row, diff_k, diff_i):
+                if do_sync(t_index, s_row, d_db, d_cur, diff_k, diff_i):
                     global_callback_needed = True
 
     # check for missing rows in the source DB
@@ -3045,8 +3095,10 @@ def run_mode_hook():
         d_db = sourcedb
     s_db.connect()
     s_db.autocommit(True)
+    s_cur = s_db.cursor(False)
     d_db.connect()
     d_db.autocommit(True)
+    d_cur = d_db.cursor(False)
 
     # template loop
     for t_index, template in enumerate(nori.core.cfg['templates']):
@@ -3097,8 +3149,8 @@ def run_mode_hook():
                 dest_func = drupal_db_query
 
         # get the source data
-        s_rows_raw = source_func(*source_args, db_obj=s_db, mode='read',
-                                 **source_kwargs)
+        s_rows_raw = source_func(*source_args, db_obj=s_db, db_cur=s_cur,
+                                 mode='read', **source_kwargs)
         if s_rows_raw is None:
             # shouldn't actually happen; errors will cause the script to
             # exit before this, as currently written
@@ -3111,6 +3163,9 @@ def run_mode_hook():
             # apply transform
             if to_dest_func and callable(to_dest_func):
                 s_num_keys, s_row = to_dest_func(template, s_row_raw)
+            else:
+                s_num_keys = len(source_kwargs['key_cv'])
+                s_row = s_row_raw
 
             # filter by keys
             if not key_filter(t_index, s_num_keys, s_row):
@@ -3120,8 +3175,8 @@ def run_mode_hook():
             s_rows.append((s_num_keys, s_row))
 
         # get the destination data
-        d_rows_raw = dest_func(*dest_args, db_obj=d_db, mode='read',
-                               **dest_kwargs)
+        d_rows_raw = dest_func(*dest_args, db_obj=d_db, db_cur=d_cur,
+                               mode='read', **dest_kwargs)
         if d_rows_raw is None:
             # shouldn't actually happen; errors will cause the
             # script to exit before this, as currently written
@@ -3134,6 +3189,9 @@ def run_mode_hook():
             # apply transform
             if to_source_func and callable(to_source_func):
                 d_num_keys, d_row = to_source_func(template, d_row_raw)
+            else:
+                d_num_keys = len(dest_kwargs['key_cv'])
+                d_row = d_row_raw
 
             # filter by keys
             if not key_filter(t_index, d_num_keys, d_row):
@@ -3145,7 +3203,7 @@ def run_mode_hook():
         # dispatch the actual diff(s)/sync(s)
         global_callback_needed = False
         if not t_multiple:
-            if do_diff_sync(t_index, s_rows, d_rows):
+            if do_diff_sync(t_index, s_rows, d_rows, d_db, d_cur):
                 global_callback_needed = True
         else:
             # group by keys
@@ -3170,7 +3228,7 @@ def run_mode_hook():
                 if s_keys in d_row_groups:
                     d_keys_found.append(s_keys)
                     if do_diff_sync(t_index, s_row_groups[s_keys],
-                                    d_row_groups[s_keys]):
+                                    d_row_groups[s_keys], d_db, d_cur):
                         global_callback_needed = True
                 else:
                     # not even a key match
@@ -3201,7 +3259,7 @@ def run_mode_hook():
             nori.core.status_logger.info(
                 'Calling global change callback...'
             )
-            ret = cb(d_db, *cb_arg_t[0], **cb_arg_t[1])
+            ret = cb(*cb_arg_t[0], db_obj=d_db, db_cur=d_cur, **cb_arg_t[1])
             nori.core.status_logger.info(
                 'Callback complete.' if ret else 'Callback failed.'
             )
@@ -3211,7 +3269,9 @@ def run_mode_hook():
         do_diff_report()
 
     # close DB connections
+    d_db.close_cursor(d_cur)
     d_db.close()
+    s_db.close_cursor(s_cur)
     s_db.close()
 
 
