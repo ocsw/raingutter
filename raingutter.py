@@ -2561,6 +2561,249 @@ Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, key_cv, value_cv,
         
 
 
+def get_drupal_node_ids(db_obj, db_cur, node_cv):
+
+    """
+    Get the node and revision IDs for a specified Drupal node.
+
+    Parameters:
+        db_obj: the database connection object to use
+        db_cur: the database cursor object to use
+        node_cv: the entry for the node in a template key_cv or
+                 value_cv sequence
+
+    """
+
+    # node details
+    node_ident = node_cv[0]
+    node_value_type = node_cv[1]
+    node_value = node_cv[2]
+    node_type = node_ident[1]
+    node_id_type = node_ident[2]
+
+    # handle node ID types
+    if node_id_type == 'id':
+        node_ident_column = 'node.nid'
+    elif node_id_type == 'title':
+        node_ident_column = 'node.title'
+
+    # query string and arguments
+    query_str = (
+'''
+SELECT node.nid, node.vid
+FROM node
+WHERE (node.vid IN
+       (SELECT max(vid)
+        FROM node
+        GROUP BY nid))
+AND node.type = %s
+AND {0} = %s
+''' .
+        format(node_ident_column)
+    )
+    query_args = [node_type, node_value]
+
+    # execute the query
+    if not db_obj.execute(db_cur, query_str.strip(), query_args,
+                          has_results=True):
+        return None
+    ret = db_obj.fetchall(db_cur)
+    if not ret[0]:
+        return None
+    if not ret[1]:
+        return []
+    return ret[1]
+
+
+def get_drupal_rel_ids(db_obj, db_cur, e1_entity_type, e1_entity_id, rel_cv,
+                       e2_entity_type, e2_entity_id):
+
+    """
+    Get the relation and revision IDs for a specified Drupal relation.
+
+    Parameters:
+        db_obj: the database connection object to use
+        db_cur: the database cursor object to use
+        e1_entity_type: the entity type (e.g., 'node') of the relation's
+                        first endpoint
+        e1_entity_id: the entity ID of the relation's first endpoint
+        rel_cv: the entry for the relation in a template key_cv or
+                value_cv sequence
+        e2_entity_type: the entity type (e.g., 'node') of the relation's
+                        second endpoint
+        e2_entity_id: the entity ID of the relation's second endpoint
+
+    """
+
+    # relation details
+    rel_ident = rel_cv[0]
+    rel_type = rel_ident[1]
+
+    # query string and arguments
+    query_str = (
+'''
+SELECT e1.entity_id, e1.revision_id
+FROM field_data_endpoints AS e1
+LEFT JOIN field_data_endpoints AS e2
+          ON e2.entity_id = e1.entity_id
+          AND e2.revision_id = e1.revision_id
+          AND e2.endpoints_r_index > e1.endpoints_r_index
+WHERE (e1.revision_id IN
+     (SELECT max(revision_id)
+      FROM field_data_endpoints
+      GROUP BY entity_id))
+AND e1.entity_type = 'relation'
+AND e1.bundle = %s
+AND e1.endpoints_entity_type = %s
+AND e1.endpoints_entity_id = %s
+AND (e1.deleted = 0 OR e1.deleted IS NULL)
+AND e2.endpoints_entity_type = %s
+AND e2.endpoints_entity_id = %s
+AND (e2.deleted = 0 OR e2.deleted IS NULL)
+'''
+    )
+    query_args = [rel_type, e1_entity_type, e1_entity_id, e2_entity_type,
+                  e2_entity_id]
+
+    # execute the query
+    if not db_obj.execute(db_cur, query_str.strip(), query_args,
+                          has_results=True):
+        return None
+    ret = db_obj.fetchall(db_cur)
+    if not ret[0]:
+        return None
+    if not ret[1]:
+        return []
+    return ret[1]
+
+
+def get_drupal_fc_ids(db_obj, db_cur, entity_type, bundle, entity_id,
+                      revision_id, fc_cv):
+
+    """
+    Get the FC and revision IDs for a specified Drupal field collection.
+
+    Parameters:
+        db_obj: the database connection object to use
+        db_cur: the database cursor object to use
+        entity_type: the entity type (e.g., 'node') of the FC's parent
+        bundle: the bundle (e.g., node content type) of the FC's parent
+        entity_id: the ID of the FC's parent
+        revision_id: the revision ID of the FC's parent
+        fc_cv: the entry for the field collection in a template key_cv
+               or value_cv sequence
+
+    """
+
+    # fc details
+    fc_ident = fc_cv[0]
+    fc_value_type = fc_cv[1]
+    fc_value = fc_cv[2]
+    fc_type = fc_ident[1]
+    fc_id_type = fc_ident[2]
+
+    # handle fc ID types
+    if fc_id_type == 'id':
+        fc_ident_column = 'fci.item_id'
+    elif fc_id_type == 'label':
+        fc_ident_column = 'fci.label'
+
+    # query string and arguments
+    query_str = (
+'''
+SELECT fci.item_id, fci.revision_id
+FROM field_data_field_{0} as fcf
+LEFT JOIN field_collection_item as fci
+ON fci.item_id = fcf.field_{0}_value
+AND fci.revision_id = fcf.field_{0}_revision
+WHERE fcf.entity_type = %s
+AND fcf.bundle = %s
+AND fcf.entity_id = %s
+AND fcf.revision_id = %s
+(fcf.deleted = 0 OR fcf.deleted IS NULL)
+AND (fci.revision_id IN
+     (SELECT max(revision_id)
+      FROM field_collection_item
+      GROUP BY item_id))
+AND (fci.archived = 0 OR fci.archived IS NULL)
+AND {1} = %s
+''' .
+        format(fc_type, fc_ident_column)
+    )
+    query_args = [entity_type, bundle, entity_id, revision_id, fc_value]
+
+    # execute the query
+    if not db_obj.execute(db_cur, query_str.strip(), query_args,
+                          has_results=True):
+        return None
+    ret = db_obj.fetchall(db_cur)
+    if not ret[0]:
+        return None
+    if not ret[1]:
+        return []
+    return ret[1]
+
+
+def get_drupal_max_delta(db_obj, db_cur, entity_type, bundle, entity_id,
+                         revision_id, field_cv):
+
+    """
+    Get the maximum current delta for a specified Drupal field.
+
+    Parameters:
+        db_obj: the database connection object to use
+        db_cur: the database cursor object to use
+        entity_type: the entity type (e.g., 'node') of the field's
+                     parent
+        bundle: the bundle (e.g., node content type) of the field's
+                parent
+        entity_id: the ID of the field's parent
+        revision_id: the revision ID of the field's parent
+        field_cv: the entry for the field in a template key_cv or
+                  value_cv sequence
+
+    """
+
+    # field details
+    field_ident = field_cv[0]
+    field_value_type = field_cv[1]
+    field_value = field_cv[2]
+    field_name = field_ident[1]
+
+    # query string and arguments
+    query_str = (
+'''
+SELECT max(delta)
+FROM field_data_field_{0}
+WHERE entity_type = %s
+AND bundle = %s
+AND entity_id = %s
+AND revision_id = %s
+AND deleted = 0
+''' .
+        format(field_name)
+    )
+    query_args = [entity_type, bundle, entity_id, revision_id]
+
+    # execute the query
+    if not db_obj.execute(db_cur, query_str.strip(), query_args,
+                          has_results=True):
+        return None
+    ret = db_obj.fetchall(db_cur)
+    if not ret[0]:
+        return None
+    if not ret[1]:
+        return []
+    return ret[1][0]  # there can only be at most one row
+
+
+def add_drupal_rel:
+
+def add_drupal_fc:
+
+def add_drupal_field:
+
+
 ###########################
 # other database functions
 ###########################
