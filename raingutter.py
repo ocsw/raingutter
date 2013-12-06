@@ -252,6 +252,20 @@ What matters is that the sets of key and value columns for each database
 correspond to each other and are the same length (after the transform
 functions have been applied).
 
+IMPORTANT: currently, key columns must be unique in each database or
+else Bad Things will happen in the destination database.  In SQL, this
+can be enforced with a unique index or primary key.  In Drupal, nodes
+must have unique titles, field collections must have unique labels
+within nodes, and relations must have unique endpoint pairs.  For nodes,
+use the Uniqueness and/or Unique Field modules.  For field collections,
+it is suggested to use the Automatic Entity Labels module to create
+labels based on node titles.  For relations, there is a setting under
+'Advanced Options'.  If non-unique values are absolutely required in
+particular nodes/relations/etc., one approach is to put those cases in a
+key list using a key mode of 'exclude' (see below).  However, this will
+not prevent problems if a new case is added to the source database
+without being added to the key list.
+
 As described above, key_cv and value_cv contain strings referring to data
 types; particular data types that can/should be supported include:
     'string'
@@ -1328,6 +1342,7 @@ def drupal_db_query(db_obj, db_cur, mode, key_cv, value_cv,
         node -> fc -> fc -> relation -> [node -> fc]
         anything with relations of arity != 2
         specifying nodes and FCs by field values
+        anything with node titles or field labels as targets
         etc.
 
     Data identifiers (the equivalent of column names) and their
