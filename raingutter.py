@@ -2752,7 +2752,7 @@ AND {1} = %s
 
 
 def get_drupal_max_delta(db_obj, db_cur, entity_type, bundle, entity_id,
-                         revision_id, field_cv):
+                         revision_id, field_name):
 
     """
     Get the maximum current delta for a specified Drupal field.
@@ -2766,16 +2766,9 @@ def get_drupal_max_delta(db_obj, db_cur, entity_type, bundle, entity_id,
                 parent
         entity_id: the ID of the field's parent
         revision_id: the revision ID of the field's parent
-        field_cv: the entry for the field in a template key_cv or
-                  value_cv sequence
+        field_name: the name of the field
 
     """
-
-    # field details
-    field_ident = field_cv[0]
-    field_value_type = field_cv[1]
-    field_value = field_cv[2]
-    field_name = field_ident[1]
 
     # query string and arguments
     query_str = (
@@ -2804,11 +2797,147 @@ AND deleted = 0
     return ret[1][0]  # there can only be at most one row
 
 
-def add_drupal_rel:
+#def get_drupal_field_defaults(db_obj, db_cur, entity_type, bundle):
+#'''
+#SELECT fci.field_name, fci.data
+#FROM field_config_instance as fci
+#LEFT JOIN field_config as fc
+#ON fc.id = fci.field_id
+#WHERE fci.entity_type = %s
+#AND fci.bundle = %s
+#AND fc.deleted = 0
+#'''
+##field_name: endpoints, field_ram, etc.
+##phpserialize.loads(data)['default_value'][0]['value'] -> '2222'
 
-def add_drupal_fc:
 
-def add_drupal_field:
+def get_drupal_field_cardinality(db_obj, db_cur, field_name):
+
+    """
+    Get the allowed cardinality for a specified Drupal field.
+
+    Parameters:
+        db_obj: the database connection object to use
+        db_cur: the database cursor object to use
+        field_name: the name of the field
+
+    """
+
+    # query string and arguments
+    query_str = (
+'''
+SELECT cardinality
+FROM field_config
+WHERE field_name = %s
+AND deleted = 0
+'''
+    )
+    query_args = ['field_' + field_name]
+
+    # execute the query
+    if not db_obj.execute(db_cur, query_str.strip(), query_args,
+                          has_results=True):
+        return None
+    ret = db_obj.fetchall(db_cur)
+    if not ret[0]:
+        return None
+    if not ret[1]:
+        return []
+###TODO
+    # in principle, there can only be at most one row, but...
+    return ret[1][0]
+
+
+#def insert_drupal_rel:
+# default field values
+
+
+#def insert_drupal_fc:
+# default field values
+
+
+def insert_drupal_field(db_obj, db_cur, entity_type, bundle, entity_id,
+                        revision_id, field_cv):
+
+    """
+    Insert a Drupal field entry.
+
+    Returns True (success) / False (failure).
+
+    Parameters:
+        db_obj: the database connection object to use
+        db_cur: the database cursor object to use
+        entity_type: the entity type (e.g., 'node') of the field's
+                     parent
+        bundle: the bundle (e.g., node content type) of the field's
+                parent
+        entity_id: the ID of the field's parent
+        revision_id: the revision ID of the field's parent
+        field_cv: the entry for the field in a template key_cv or
+                  value_cv sequence
+
+    Dependencies:
+        modules: nori
+
+    """
+
+    # field details
+    field_ident = field_cv[0]
+    field_value_type = field_cv[1]
+    field_value = field_cv[2]
+    field_name = field_ident[1]
+
+    # check cardinality
+    f_card = get_drupal_field_cardinality(db_obj, db_cur, field_name)
+    if not f_card:
+        nori.core.email_logger.error(
+            'Warning: could not get the cardinality of Drupal field {0};\n'
+            'skipping insert.'.format(field_name)
+        )
+        return False
+    f_cur_delta = get_drupal_max_delta(db_obj, db_cur, entity_type, bundle,
+                                       entity_id, revision_id, field_name)
+    if f_delta is None:
+        nori.core.email_logger.error(
+'''Warning: could not get the maximum delta of Drupal field {0}
+under the following parent entity:
+    entity_type: {1}
+    bundle: {2}
+    entity_id: {3}
+    revision_id: {4}
+Skipping insert.''' .
+            format(*map(nori.pps, [field_name, entity_type, bundle,
+                                   entity_id, revision_id]))
+        )
+        return False
+    if not_f_delta:
+        f_delta = -1
+    if f_card[0] != -1 and f_cur_delta[0] >= (f_card[0] - 1):
+        # no more room
+        nori.core.email_logger.error(
+'''There are already the maximum number of entries {0} for Drupal field
+{1} under the following parent entity:
+    entity_type: {2}
+    bundle: {3}
+    entity_id: {4}
+    revision_id: {5}
+Skipping insert; manual intervention required.''' .
+            format(*map(nori.pps, [f_card, field_name, entity_type, bundle,
+                                   entity_id, revision_id]))
+        )
+        return False
+
+    # query string and arguments
+    query_str = (
+'''
+INSERT INTO field_data_field_{0}
+(entity_type, bundle, deleted, entity_id, revision_id, language, delta,
+field_{0}_value)
+VALUES
+({1}, {2}, 0, {3}, {4}, ?, {5}, {6})
+'''
+    )
+###TODO taxonomies, revision, transaction
 
 
 ###########################
