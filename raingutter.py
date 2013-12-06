@@ -2561,6 +2561,13 @@ Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, key_cv, value_cv,
         
 
 
+#
+# Note: even if we got some of the info the functions below retreive
+# when we did the original SELECTs, it's possible for one template
+# to cause an insert that won't be picked up on by a later one
+# unless we check again.
+#
+
 def get_drupal_node_ids(db_obj, db_cur, node_cv):
 
     """
