@@ -104,6 +104,16 @@ NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
 EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 '''
 
+# exit value
+nori.core.exitvals['drupal'] = dict(
+    num=40,
+    descr=(
+'''
+Problem with a Drupal database.
+'''
+    ),
+)
+
 # see pre_action_drupal_readonly(), post_action_drupal_readonly()
 s_drupal_readonly = None
 d_drupal_readonly = None
@@ -3892,6 +3902,117 @@ VALUES
 ###########################
 # other database functions
 ###########################
+
+def drupal_readonly_status(db_obj, db_cur, what=None):
+    """
+    Get or set the read-only status of a Drupal site.
+    If what is True or False, returns True on success, False on error.
+    If what is None, returns True/False, or None on error.
+    Parameters:
+        db_obj: the database connection object to use
+        db_cur: the database cursor object to use
+        what: if True, turn read-only mode on; if False, turn it off;
+              if None, return the current status
+    """
+    if what is None:
+        query_str = (
+'''
+SELECT value
+FROM variable
+WHERE name='site_readonly'
+'''
+        )
+        query_args = []
+        if not db_obj.execute(db_cur, query_str.strip(), query_args,
+                              has_results=True):
+            return None
+        ret = db_obj.fetchall(db_cur)
+        if not ret[0]:
+            return None
+        if not ret[1]:
+            return None
+        return (ret[1][0][0] == 'i:1;')
+    else:
+        query_str = (
+'''
+UPDATE variable
+SET value = %s
+WHERE name='site_readonly'
+'''
+        )
+        query_args = ['i:1;' if what else 'i:0;']
+        return db_obj.execute(db_cur, query_str.strip(), query_args,
+                              has_results=True)
+
+
+def pre_action_drupal_readonly(s_db, s_cur, d_db, d_cur):
+    """
+    Wrapper around drupal_readonly_status() for pre-action callbacks.
+    Parameters:
+        s_db: the source-database connection object to use
+        s_cur: the source-database cursor object to use
+        d_db: the destination-database connection object to use
+        d_cur: the destination-database cursor object to use
+    Dependencies:
+        config settings: reverse, sourcedb_type, destdb_type
+        globals: s_drupal_readonly, d_drupal_readonly
+        functions: drupal_readonly_status()
+        modules: sys, nori
+    """
+    global s_drupal_readonly, d_drupal_readonly
+    if not nori.core.cfg['reverse']:
+        s_type = nori.core.cfg['sourcedb_type']
+        d_type = nori.core.cfg['destdb_type']
+    else:
+        s_type = nori.core.cfg['destdb_type']
+        d_type = nori.core.cfg['sourcedb_type']
+    if s_type == 'drupal':
+        s_drupal_readonly = drupal_readonly_status(s_db, s_cur, None)
+        if s_drupal_readonly is None:
+            nori.core.email_logger.error(
+                "Error: can't set Drupal site read-only; exiting."
+            )
+            sys.exit(nori.core.exitvals['drupal']['num'])
+        else:
+            drupal_readonly_status(s_db, s_cur, True)
+    if d_type == 'drupal':
+        d_drupal_readonly = drupal_readonly_status(d_db, d_cur, None)
+        if d_drupal_readonly is None:
+            nori.core.email_logger.error(
+                "Error: can't set Drupal site read-only; exiting."
+            )
+            sys.exit(nori.core.exitvals['drupal']['num'])
+        else:
+            drupal_readonly_status(d_db, d_cur, True)
+
+
+def post_action_drupal_readonly(s_db, s_cur, d_db, d_cur):
+    """
+    Wrapper around drupal_readonly_status() for post-action callbacks.
+    Parameters:
+        s_db: the source-database connection object to use
+        s_cur: the source-database cursor object to use
+        d_db: the destination-database connection object to use
+        d_cur: the destination-database cursor object to use
+    Dependencies:
+        globals: s_drupal_readonly, d_drupal_readonly
+        functions: drupal_readonly_status()
+        modules: nori
+    """
+    global s_drupal_readonly, d_drupal_readonly
+    if s_drupal_readonly is not None:
+        if not drupal_readonly_status(s_db, s_cur, s_drupal_readonly):
+            nori.core.email_logger.error(
+                "Warning: can't restore Drupal site's read-only status;\n"
+                "manual intervention is probably required."
+            )
+    if d_drupal_readonly is not None:
+        if not drupal_readonly_status(d_db, d_cur, d_drupal_readonly):
+            nori.core.email_logger.error(
+                "Warning: can't restore Drupal site's read-only status;\n"
+                "manual intervention is probably required."
+            )
+
 
 def clear_drupal_cache(db_obj, db_cur):
     """
