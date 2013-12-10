@@ -282,7 +282,9 @@ types; particular data types that can/should be supported include:
     'ip' [IP address; stored as a number, displayed as an address]
 Some of these are Drupal-specific; in particular, the 'term' type is for
 Drupal taxonomy term references, and includes the name of the relevant
-vocabulary.
+vocabulary.  Currently, these strings are only used by (passed to) the
+transform functions, with the exception of Drupal taxonomy term
+references.
 
 In 'read' mode, the query functions must return None on failure, or a
 complete result set on success.  The result set must be a sequence (possibly
@@ -2556,7 +2558,6 @@ Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, key_cv, value_cv,
         )
         sys.exit(nori.core.exitvals['internal']['num'])
 
-    
     #
     # node -> field (including term references)
     #
@@ -2583,7 +2584,7 @@ Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, key_cv, value_cv,
 
 
 #
-# Note: even if we got some of the info the functions below retreive
+# Note: even if we got some of the info the functions below retrieve
 # when we did the original SELECTs, it's possible for one template
 # to cause an insert that won't be picked up on by a later one
 # unless we check again.
