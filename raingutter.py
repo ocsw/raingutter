@@ -293,8 +293,9 @@ by a row for different keys; this typically requires an ORDER BY clause in
 SQL).
 
 In 'update' and 'insert' modes, the query functions must return a tuple of
-(number_of_successes, number_of_failures).  (They will generally have to
-loop over the value_cv columns rather than doing them all at once.)
+(number_of_full_successes, number of partial_successes, number_of_failures).
+(They will generally have to loop over the value_cv columns rather than
+doing them all at once.)
 
 The transform functions, if not None, must take the following parameters:
     template: the complete template entry for this data
@@ -1127,7 +1128,7 @@ Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, mode, tables, key_cv,
                     successes += 1
             else:
                 successes += 1
-        return (successes, failures)
+        return (successes, 0, failures)
 
     if mode == 'insert':
         successes = 0
@@ -1142,7 +1143,7 @@ Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, mode, tables, key_cv,
                 failures += 1
             else:
                 successes += 1
-        return (successes, failures)
+        return (successes, 0, failures)
 
 
 def generic_db_read(db_obj, db_cur, tables, key_cv, value_cv,
@@ -1491,21 +1492,33 @@ Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, mode, key_cv, value_cv,
                     successes += 1
             else:
                 successes += 1
-        return (successes, failures)
+        return (successes, 0, failures)
 
     if mode == 'insert':
-        successes = 0
+        fulls = 0
+        partials = 0
         failures = 0
         for i, cv in enumerate(value_cv):
             in_ret = drupal_db_insert(db_obj, db_cur, key_cv, [value_cv[i]],
                                       no_replicate)
-            if not in_ret:
+            if in_ret is None:
                 # eventually, there should be an option for this case:
                 # exit or continue? (currently, won't be reached)
                 failures += 1
+            elif not in_ret:
+                # eventually, there should be an option for this case:
+                # exit or continue?
+                nori.core.email_logger.error(
+'''Warning: insert was only partially successful; manual intervention is
+probably required.
+    key_cv: {0}
+    value_cv: {1}''' .
+                    format(*map(nori.pps, [key_cv, value_cv]))
+                )
+                partials += 1
             else:
-                successes += 1
-        return (successes, failures)
+                fulls += 1
+        return (fulls, partials, failures)
 
 
 def drupal_db_read(db_obj, db_cur, key_cv, value_cv):
@@ -2495,6 +2508,8 @@ def drupal_db_insert(db_obj, db_cur, key_cv, value_cv, no_replicate=False):
     """
     Do the actual work for generic Drupal DB inserts.
 
+    Returns True (success), False (partial success), or None (failure).
+
     The value_cv sequence may only have one element.
 
     Parameters:
@@ -3002,7 +3017,8 @@ def insert_drupal_relation(db_obj, db_cur, e1_entity_type, e1_entity_id,
     """
     Insert a Drupal relation.
 
-    Returns True (success) / False (failure).
+    Returns a tuple: (success?, relation_id, revision_id), where success
+    can be True (success), False (partial success), or None (failure).
 
     Parameters:
         db_obj: the database connection object to use
@@ -3040,7 +3056,7 @@ VALUES
         # won't be reached currently; script will exit on errors
         db_obj.rollback()  # ignore errors
         db_obj.autocommit(db_ac)
-        return False
+        return (None, None, None)
 
     # get the new relation ID
     ret = db_obj.get_last_id(db_cur)
@@ -3048,7 +3064,7 @@ VALUES
         # won't be reached currently; script will exit on errors
         db_obj.rollback()  # ignore errors
         db_obj.autocommit(db_ac)
-        return False
+        return (None, None, None)
     rid = ret[1]
 
     # insert the revision row for the relation
@@ -3067,7 +3083,7 @@ VALUES
         # won't be reached currently; script will exit on errors
         db_obj.rollback()  # ignore errors
         db_obj.autocommit(db_ac)
-        return False
+        return (None, None, None)
 
     # get the new revision ID
     ret = db_obj.get_last_id(db_cur)
@@ -3075,7 +3091,7 @@ VALUES
         # won't be reached currently; script will exit on errors
         db_obj.rollback()  # ignore errors
         db_obj.autocommit(db_ac)
-        return False
+        return (None, None, None)
     vid = ret[1]
 
     # update the relation row with the revision ID
@@ -3091,7 +3107,7 @@ WHERE rid = %s
         # won't be reached currently; script will exit on errors
         db_obj.rollback()  # ignore errors
         db_obj.autocommit(db_ac)
-        return False
+        return (None, None, None)
 
     # insert data and revision rows for the endpoints
     endpoints = [(0, e1_entity_type, e1_entity_id),
@@ -3116,25 +3132,25 @@ VALUES
                 # won't be reached currently; script will exit on errors
                 db_obj.rollback()  # ignore errors
                 db_obj.autocommit(db_ac)
-                return False
+                return (None, None, None)
 
     # finish the transaction
     ret = db_obj.commit()
     db_obj.autocommit(db_ac)
     if not ret:
-        return False
+        return (None, None, None)
 
     # default field values
     f_defs = get_drupal_field_defaults(db_obj, db_cur, 'relation',
                                        relation_type)
     if f_defs is None:
-        return False
+        return (False, rid, vid)
     for f_def in f_defs:
         if not insert_drupal_field(db_obj, db_cur, 'relation',
                                    relation_type, rid, vid, f_def):
-            return False
+            return (False, rid, vid)
 
-    return True
+    return (True, rid, vid)
 
 
 def insert_drupal_fc(db_obj, db_cur, entity_type, bundle, entity_id,
@@ -3143,7 +3159,8 @@ def insert_drupal_fc(db_obj, db_cur, entity_type, bundle, entity_id,
     """
     Insert a Drupal field collection.
 
-    Returns True (success) / False (failure).
+    Returns a tuple: (success?, fc_id, revision_id), where success can
+    be True (success), False (partial success), or None (failure).
 
     Parameters:
         db_obj: the database connection object to use
@@ -3200,7 +3217,7 @@ VALUES
         # won't be reached currently; script will exit on errors
         db_obj.rollback()  # ignore errors
         db_obj.autocommit(db_ac)
-        return False
+        return (None, None, None)
 
     # get the new field_collection ID
     if fc_id_type == 'label':
@@ -3209,7 +3226,7 @@ VALUES
             # won't be reached currently; script will exit on errors
             db_obj.rollback()  # ignore errors
             db_obj.autocommit(db_ac)
-            return False
+            return (None, None, None)
         fcid = ret[1]
 
     # insert the revision row for the field_collection
@@ -3227,7 +3244,7 @@ VALUES
         # won't be reached currently; script will exit on errors
         db_obj.rollback()  # ignore errors
         db_obj.autocommit(db_ac)
-        return False
+        return (None, None, None)
 
     # get the new revision ID
     ret = db_obj.get_last_id(db_cur)
@@ -3235,7 +3252,7 @@ VALUES
         # won't be reached currently; script will exit on errors
         db_obj.rollback()  # ignore errors
         db_obj.autocommit(db_ac)
-        return False
+        return (None, None, None)
     vid = ret[1]
 
     # update the field collection row with the revision ID
@@ -3251,7 +3268,7 @@ WHERE item_id = %s
         # won't be reached currently; script will exit on errors
         db_obj.rollback()  # ignore errors
         db_obj.autocommit(db_ac)
-        return False
+        return (None, None, None)
 
     # insert data and revision rows for the field collection field
     fcf_cv = (('field', fc_type), 'integer', fcid)
@@ -3261,25 +3278,25 @@ WHERE item_id = %s
             # won't be reached currently; script will exit on errors
             db_obj.rollback()  # ignore errors
             db_obj.autocommit(db_ac)
-            return False
+            return (None, None, None)
 
     # finish the transaction
     ret = db_obj.commit()
     db_obj.autocommit(db_ac)
     if not ret:
-        return False
+        return (None, None, None)
 
     # default field values
     f_defs = get_drupal_field_defaults(db_obj, db_cur,
                                        'field_collection_item', fc_type)
     if f_defs is None:
-        return False
+        return (False, fcid, vid)
     for f_def in f_defs:
         if not insert_drupal_field(db_obj, db_cur, 'field_collection_item',
                                    fc_type, fcid, vid, f_def):
-            return False
+            return (False, fcid, vid)
 
-    return True
+    return (True, fcid, vid)
 
 
 def insert_drupal_field(db_obj, db_cur, no_trans, entity_type, bundle,
@@ -3288,7 +3305,7 @@ def insert_drupal_field(db_obj, db_cur, no_trans, entity_type, bundle,
     """
     Insert a Drupal field entry.
 
-    Returns True (success) / False (failure).
+    Returns True (success), False (partial success), or None (failure).
 
     Parameters:
         db_obj: the database connection object to use
@@ -3325,7 +3342,7 @@ def insert_drupal_field(db_obj, db_cur, no_trans, entity_type, bundle,
             'Warning: could not get the cardinality of Drupal field {0};\n'
             'skipping insert.'.format(nori.pps(field_name))
         )
-        return False
+        return None
     f_cur_delta = get_drupal_max_delta(db_obj, db_cur, entity_type, bundle,
                                        entity_id, revision_id, field_name)
     if f_delta is None:
@@ -3340,7 +3357,7 @@ Skipping insert.''' .
             format(*map(nori.pps, [field_name, entity_type, bundle,
                                    entity_id, revision_id]))
         )
-        return False
+        return None
     if not_f_delta:
         f_delta = -1
     if f_card[0] != -1 and f_cur_delta[0] >= (f_card[0] - 1):
@@ -3356,7 +3373,7 @@ Skipping insert; manual intervention required.''' .
             format(*map(nori.pps, [f_card, field_name, entity_type, bundle,
                                    entity_id, revision_id]))
         )
-        return False
+        return None
 
     # handle taxonomy terms
     if field_value_type.startswith('term: '):
@@ -3368,7 +3385,7 @@ Skipping insert; manual intervention required.''' .
                 'vocabulary {1}; skipping insert.' .
                 format(*map(nori.pps, [term_name, field_value_type[6:]]))
             )
-            return False
+            return None
         field_value = ret[0]
         value_column = 'field_' + field_name + '_tid'
     else:
@@ -3413,11 +3430,11 @@ VALUES
             if not no_trans:
                 db_obj.rollback()  # ignore errors
                 db_obj.autocommit(db_ac)
-            return False
+            return None
     if not no_trans:
         ret = db_obj.commit()
         db_obj.autocommit(db_ac)
-        return ret
+        return None if not ret else True
     else:
         return True
 
