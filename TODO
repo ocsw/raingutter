@@ -4,8 +4,6 @@ inner joins for relations, etc?
 configs for OCS fields
 testing
 
-pre/post callbacks, readonlymode (site_readonly 1/0)
-
 nori import
 
 refs to rg funcs from config
