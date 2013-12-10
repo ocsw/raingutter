@@ -2561,26 +2561,342 @@ Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, key_cv, value_cv,
     #
     # node -> field (including term references)
     #
-    #if chain_type == 'n-f':
-        
+    if chain_type == 'n-f':
+        # node details
+        node_cv = key_cv[0]
+        node_ident = node_cv[0]
+        node_value_type = node_cv[1]
+        node_value = node_cv[2]
+        node_type = node_ident[1]
+        node_id_type = node_ident[2]
+
+        # get the node IDs
+        ret = get_drupal_node_ids(db_obj, db_cur, node_cv)
+        if ret is None:
+            nori.core.email_logger.error(
+'''Warning: could not get the IDs of the following parent node:
+    node_type: {0}
+    node_id_type: {1}
+    node_value: {2}
+Skipping insert.''' .
+                format(*map(nori.pps, [node_type, node_id_type,
+                                       node_value]))
+            )
+            return None
+        if not ret:
+            # eventually, we'll want to actually add the node;
+            # for now, this shouldn't even be reached
+            return None
+        # similarly, we may eventually want to / be able to handle
+        # multiple rows here, but for now just take the first one
+        nid, vid = ret[0]
+
+        # insert the field entry
+        return insert_drupal_field(db_obj, db_cur, 'node', node_type, nid,
+                                   vid, field_cv)
 
     #
     # node -> relation -> node
     #
-    #elif chain_type == 'n-r-n':
-        
+    if chain_type == 'n-r-n':
+        # key-node details
+        k_node_cv = key_cv[0]
+        k_node_ident = k_node_cv[0]
+        k_node_value_type = k_node_cv[1]
+        k_node_value = k_node_cv[2]
+        k_node_type = k_node_ident[1]
+        k_node_id_type = k_node_ident[2]
+
+        # relation details
+        rel_cv = key_cv[1]
+        rel_ident = rel_cv[0]
+        rel_type = rel_ident[1]
+
+        # value-node details
+        v_node_cv = value_cv[0]
+        v_node_ident = v_node_cv[0]
+        v_node_value_type = v_node_cv[1]
+        v_node_value = v_node_cv[2]
+        v_node_type = v_node_ident[1]
+        v_node_id_type = v_node_ident[2]
+
+        # get the key-node ID
+        if k_node_id_type == 'id':
+            k_nid = k_node_value
+        elif k_node_id_type == 'title':
+            ret = get_drupal_node_ids(db_obj, db_cur, k_node_cv)
+            if ret is None:
+                nori.core.email_logger.error(
+'''Warning: could not get the IDs of the following linked node:
+    node_type: {0}
+    node_id_type: {1}
+    node_value: {2}
+Skipping insert.''' .
+                    format(*map(nori.pps, [k_node_type, k_node_id_type,
+                                           k_node_value]))
+                )
+                return None
+            if not ret:
+                # eventually, we'll want to actually add the node;
+                # for now, this shouldn't even be reached
+                return None
+            # similarly, we may eventually want to / be able to handle
+            # multiple rows here, but for now just take the first one
+            k_nid, k_vid = ret[0]
+
+        # get the value-node ID
+        if v_node_id_type == 'id':
+            v_nid = v_node_value
+        elif v_node_id_type == 'title':
+            ret = get_drupal_node_ids(db_obj, db_cur, v_node_cv)
+            if ret is None:
+                nori.core.email_logger.error(
+'''Warning: could not get the IDs of the following linked node:
+    node_type: {0}
+    node_id_type: {1}
+    node_value: {2}
+Skipping insert.''' .
+                    format(*map(nori.pps, [v_node_type, v_node_id_type,
+                                           v_node_value]))
+                )
+                return None
+            if not ret:
+                # eventually, we'll want to actually add the node;
+                # for now, this shouldn't even be reached
+                return None
+            # similarly, we may eventually want to / be able to handle
+            # multiple rows here, but for now just take the first one
+            v_nid, v_vid = ret[0]
+
+        # insert the relation
+        return insert_drupal_relation(db_obj, db_cur, 'node', k_nid,
+                                      relation_type, 'node', v_nid)[0]
 
     #
     # node -> relation & node -> relation_field (incl. term refs)
     #
-    #elif chain_type == 'n-rn-rf':
-        
+    if chain_type == 'n-rn-rf':
+        partial = False
+
+        # node1 details
+        node1_cv = key_cv[0]
+        node1_ident = node1_cv[0]
+        node1_value_type = node1_cv[1]
+        node1_value = node1_cv[2]
+        node1_type = node1_ident[1]
+        node1_id_type = node1_ident[2]
+
+        # handle node1 ID types
+        if node1_id_type == 'id':
+            key_column_1 = 'node1.nid'
+        elif node1_id_type == 'title':
+            key_column_1 = 'node1.title'
+
+        # relation details
+        rel_cv = key_cv[1]
+        rel_ident = rel_cv[0]
+        rel_type = rel_ident[1]
+
+        # node2 details
+        node2_cv = key_cv[0]
+        node2_ident = node2_cv[0]
+        node2_value_type = node2_cv[1]
+        node2_value = node2_cv[2]
+        node2_type = node2_ident[1]
+        node2_id_type = node2_ident[2]
+
+        # handle node2 ID types
+        if node2_id_type == 'id':
+            key_column_2 = 'node2.nid'
+        elif node2_id_type == 'title':
+            key_column_2 = 'node2.title'
+
+        # field details
+        field_cv = value_cv[0]
+        field_ident = field_cv[0]
+        field_value_type = field_cv[1]
+        field_value = field_cv[2]
+        field_name = field_ident[1]
+
+        # get node1's ID
+        if node1_id_type == 'id':
+            node1_nid = node1_value
+        elif node1_id_type == 'title':
+            ret = get_drupal_node_ids(db_obj, db_cur, node1_cv)
+            if ret is None:
+                nori.core.email_logger.error(
+'''Warning: could not get the IDs of the following linked node:
+    node_type: {0}
+    node_id_type: {1}
+    node_value: {2}
+Skipping insert.''' .
+                    format(*map(nori.pps, [node1_type, node1_id_type,
+                                           node1_value]))
+                )
+                return None
+            if not ret:
+                # eventually, we'll want to actually add the node;
+                # for now, this shouldn't even be reached
+                return None
+            # similarly, we may eventually want to / be able to handle
+            # multiple rows here, but for now just take the first one
+            node1_nid, node1_vid = ret[0]
+
+        # get node2's ID
+        if node2_id_type == 'id':
+            node2_nid = node2_value
+        elif node2_id_type == 'title':
+            ret = get_drupal_node_ids(db_obj, db_cur, node2_cv)
+            if ret is None:
+                nori.core.email_logger.error(
+'''Warning: could not get the IDs of the following linked node:
+    node_type: {0}
+    node_id_type: {1}
+    node_value: {2}
+Skipping insert.''' .
+                    format(*map(nori.pps, [node2_type, node2_id_type,
+                                           node2_value]))
+                )
+                return None
+            if not ret:
+                # eventually, we'll want to actually add the node;
+                # for now, this shouldn't even be reached
+                return None
+            # similarly, we may eventually want to / be able to handle
+            # multiple rows here, but for now just take the first one
+            node2_nid, node2_vid = ret[0]
+
+        # get the relation's IDs
+        ret = get_drupal_relation_ids(db_obj, db_cur, 'node', node1_nid,
+                                      relation_type, 'node', node2_nid)
+        if ret is None:
+            nori.core.email_logger.error(
+'''Warning: could not get the IDs of the {0} relation with
+the following endpoints:
+    node1_type: {1}
+    node1_id_type: {2}
+    node1_value: {3}
+    node2_type: {4}
+    node2_id_type: {5}
+    node2_value: {6}
+Skipping insert.''' .
+                format(*map(nori.pps, [relation_type, node1_type,
+                                       node1_id_type, node1_value,
+                                       node2_type, node2_id_type,
+                                       node2_value]))
+            )
+            return None
+        if not ret:
+            # the relation doesn't exist, so insert it
+            ret = insert_drupal_relation(db_obj, db_cur, 'node', node1_nid,
+                                         relation_type, 'node', node2_nid)
+            if ret[0] is None:
+                return None
+            if not ret[0]:
+                # keep going, but return partial success when we're done
+                partial = True
+            rid = ret[1]
+            vid = ret[2]
+        else:
+            # we may eventually want to / be able to handle multiple
+            # rows here, but for now just take the first one
+            rid, vid = ret[0]
+
+        # insert the field entry
+        ret = insert_drupal_field(db_obj, db_cur, 'relation',
+                                  relation_type, rid, vid, field_cv)
+        if ret is None:
+            return None
+        if (not ret) or partial:
+            return False
+        return True
 
     #
     # node -> fc -> field (including term references)
     #
-    #elif chain_type == 'n-fc-f':
-        
+    if chain_type == 'n-fc-f':
+        partial = False
+
+        # node details
+        node_cv = key_cv[0]
+        node_ident = node_cv[0]
+        node_value_type = node_cv[1]
+        node_value = node_cv[2]
+        node_type = node_ident[1]
+        node_id_type = node_ident[2]
+
+        # fc details
+        fc_cv = key_cv[1]
+        fc_ident = fc_cv[0]
+        fc_value_type = fc_cv[1]
+        fc_value = fc_cv[2]
+        fc_type = fc_ident[1]
+        fc_id_type = fc_ident[2]
+
+        # get the node IDs
+        ret = get_drupal_node_ids(db_obj, db_cur, node_cv)
+        if ret is None:
+            nori.core.email_logger.error(
+'''Warning: could not get the IDs of the following parent node:
+    node_type: {0}
+    node_id_type: {1}
+    node_value: {2}
+Skipping insert.''' .
+                format(*map(nori.pps, [node_type, node_id_type,
+                                       node_value]))
+            )
+            return None
+        if not ret:
+            # eventually, we'll want to actually add the node;
+            # for now, this shouldn't even be reached
+            return None
+        # similarly, we may eventually want to / be able to handle
+        # multiple rows here, but for now just take the first one
+        n_id, n_vid = ret[0]
+
+        # get the field collection's IDs
+        ret = get_drupal_fc_ids(db_obj, db_cur, 'node', node_type, n_id,
+                                n_vid, fc_cv)
+        if ret is None:
+            nori.core.email_logger.error(
+'''Warning: could not get the IDs of the following Drupal parent field
+collection:
+    fc_type: {0}
+    fc_id_type: {1}
+    fc_value: {2}
+    node_type: {3}
+    node_id_type: {4}
+    node_value: {5}
+Skipping insert.''' .
+                format(*map(nori.pps, [fc_type, fc_id_type, fc_value,
+                                       node_type, node_id_type,
+                                       node_value]))
+            )
+            return None
+        if not ret:
+            # the fc doesn't exist, so insert it
+            ret = insert_drupal_fc(db_obj, db_cur, 'node', node_type, n_id,
+                                   n_vid, fc_cv)
+            if ret[0] is None:
+                return None
+            if not ret[0]:
+                # keep going, but return partial success when we're done
+                partial = True
+            fc_id = ret[1]
+            fc_vid = ret[2]
+        else:
+            # we may eventually want to / be able to handle multiple
+            # rows here, but for now just take the first one
+            fc_id, fc_vid = ret[0]
+
+        # insert the field entry
+        ret = insert_drupal_field(db_obj, db_cur, 'field_collection_item',
+                                  fc_type, fc_id, fc_vid, field_cv)
+        if ret is None:
+            return None
+        if (not ret) or partial:
+            return False
+        return True
 
 
 #
