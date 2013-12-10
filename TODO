@@ -5,8 +5,6 @@ inner joins for relations, etc?
 configs for OCS fields
 testing
 
-get last id - M: LAST_INSERT_ID() / cur.lastrowid  P: lastval()
-
 pre/post callbacks, readonlymode (site_readonly 1/0)
 
 nori import
@@ -19,6 +17,7 @@ redundant output log messages?
 
 db/ssh conn msgs: identifiers
 
+get last id
 postgres table list
 callable setting check
 
@@ -29,6 +28,8 @@ no_replicate for updates
 
 more examples/sql, esp for drupal?
 
+phpserialize
+
 ---
 
 handle non-unique field titles, fc labels, relations
@@ -38,10 +39,14 @@ handle non-unique field titles, fc labels, relations
 
 handle interpreting drupal field defaults
 
-docstring / USAGE / mod notes re chains
+check min/max, other constraints when adding fields (including defaults)
+
+docstring / USAGE / mod notes re chains, phpserialize
 
 error handling: exit/skip?
 
 autocommit options
 
 node -> title, fc -> label, etc. (?)
+
+user ID option?
