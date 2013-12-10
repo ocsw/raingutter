@@ -29,11 +29,17 @@ import socket
 import logging
 import logging.handlers
 import copy
+import time
 
 
 #########
 # add-on
 #########
+
+try:
+    import phpserialize
+except ImportError:
+    pass
 
 sys.path.insert(0, '/home/dmalament')
 import nori
@@ -2573,6 +2579,9 @@ def get_drupal_node_ids(db_obj, db_cur, node_cv):
     """
     Get the node and revision IDs for a specified Drupal node.
 
+    Returns None on error, an empty array if there are no results, or
+    a sequence of row tuples.
+
     Parameters:
         db_obj: the database connection object to use
         db_cur: the database cursor object to use
@@ -2622,11 +2631,14 @@ AND {0} = %s
     return ret[1]
 
 
-def get_drupal_rel_ids(db_obj, db_cur, e1_entity_type, e1_entity_id, rel_cv,
-                       e2_entity_type, e2_entity_id):
+def get_drupal_relation_ids(db_obj, db_cur, e1_entity_type, e1_entity_id,
+                            relation_type, e2_entity_type, e2_entity_id):
 
     """
     Get the relation and revision IDs for a specified Drupal relation.
+
+    Returns None on error, an empty array if there are no results, or
+    a sequence of row tuples.
 
     Parameters:
         db_obj: the database connection object to use
@@ -2634,17 +2646,12 @@ def get_drupal_rel_ids(db_obj, db_cur, e1_entity_type, e1_entity_id, rel_cv,
         e1_entity_type: the entity type (e.g., 'node') of the relation's
                         first endpoint
         e1_entity_id: the entity ID of the relation's first endpoint
-        rel_cv: the entry for the relation in a template key_cv or
-                value_cv sequence
+        relation_type: the type string / bundle of the relation
         e2_entity_type: the entity type (e.g., 'node') of the relation's
                         second endpoint
         e2_entity_id: the entity ID of the relation's second endpoint
 
     """
-
-    # relation details
-    rel_ident = rel_cv[0]
-    rel_type = rel_ident[1]
 
     # query string and arguments
     query_str = (
@@ -2669,8 +2676,8 @@ AND e2.endpoints_entity_id = %s
 AND (e2.deleted = 0 OR e2.deleted IS NULL)
 '''
     )
-    query_args = [rel_type, e1_entity_type, e1_entity_id, e2_entity_type,
-                  e2_entity_id]
+    query_args = [relation_type, e1_entity_type, e1_entity_id,
+                  e2_entity_type, e2_entity_id]
 
     # execute the query
     if not db_obj.execute(db_cur, query_str.strip(), query_args,
@@ -2689,6 +2696,9 @@ def get_drupal_fc_ids(db_obj, db_cur, entity_type, bundle, entity_id,
 
     """
     Get the FC and revision IDs for a specified Drupal field collection.
+
+    Returns None on error, an empty array if there are no results, or
+    a sequence of row tuples.
 
     Parameters:
         db_obj: the database connection object to use
@@ -2757,6 +2767,9 @@ def get_drupal_max_delta(db_obj, db_cur, entity_type, bundle, entity_id,
     """
     Get the maximum current delta for a specified Drupal field.
 
+    Returns None on error, an empty array if there are no results, or
+    a single row tuple.
+
     Parameters:
         db_obj: the database connection object to use
         db_cur: the database cursor object to use
@@ -2767,6 +2780,9 @@ def get_drupal_max_delta(db_obj, db_cur, entity_type, bundle, entity_id,
         entity_id: the ID of the field's parent
         revision_id: the revision ID of the field's parent
         field_name: the name of the field
+
+    Dependencies:
+        modules: nori
 
     """
 
@@ -2794,21 +2810,90 @@ AND deleted = 0
         return None
     if not ret[1]:
         return []
-    return ret[1][0]  # there can only be at most one row
+    # sanity check
+    if len(ret[1]) != 1:
+        nori.core.email_logger.error(
+'''Warning: multiple max-delta entries for Drupal field {0}
+under the following parent entity:
+    entity_type: {1}
+    bundle: {2}
+    entity_id: {3}
+    revision_id: {4}.''' .
+            format(*map(nori.pps, [field_name, entity_type, bundle,
+                                   entity_id, revision_id]))
+        )
+        return None
+    return ret[1][0]
 
 
-#def get_drupal_field_defaults(db_obj, db_cur, entity_type, bundle):
-#'''
-#SELECT fci.field_name, fci.data
-#FROM field_config_instance as fci
-#LEFT JOIN field_config as fc
-#ON fc.id = fci.field_id
-#WHERE fci.entity_type = %s
-#AND fci.bundle = %s
-#AND fc.deleted = 0
-#'''
-##field_name: endpoints, field_ram, etc.
-##phpserialize.loads(data)['default_value'][0]['value'] -> '2222'
+def get_drupal_field_defaults(db_obj, db_cur, entity_type, bundle):
+
+    """
+    Get the defaults for all fields in a specified Drupal entity.
+
+    Returns None on error, an empty array if there are no results, or
+    a sequence of tuples in cv format (see drupal_db_query()).
+
+    Only returns fields with a default.
+
+    Parameters:
+        db_obj: the database connection object to use
+        db_cur: the database cursor object to use
+        entity_type: the type (e.g., 'node') of the entity to check
+        bundle: the bundle (e.g., node content type) of the entity to
+                check
+
+    Dependencies:
+        modules: sys, nori
+
+    """
+
+    # query string and arguments
+    query_str = (
+'''
+SELECT fci.field_name, fci.data
+FROM field_config_instance as fci
+LEFT JOIN field_config as fc
+ON fc.id = fci.field_id
+WHERE fci.entity_type = %s
+AND fci.bundle = %s
+AND fc.deleted = 0
+'''
+    query_args = [entity_type, bundle]
+
+    # execute the query
+    if not db_obj.execute(db_cur, query_str.strip(), query_args,
+                          has_results=True):
+        return None
+    ret = db_obj.fetchall(db_cur)
+    if not ret[0]:
+        return None
+    if not ret[1]:
+        return []
+
+    # wait until we see if there are any defaults to check for the
+    # module, so we don't have to emit warnings if there are no defaults
+    # anyway
+    if 'phpserialize' not in sys.modules:
+        nori.core.email_logger.error(
+'''Warning: there are defaults for Drupal fields under entity type
+{0) and bundle {1}, but the 'phpserialize' module
+is not available, so they can't be interpreted.''' .
+            format(*map(nori.pps, [entity_type, bundle]))
+        )
+        return None
+
+    # massage the defaults - not implemented yet
+    nori.core.email_logger.error(
+'''Warning: there are defaults for Drupal fields under entity type
+{0) and bundle {1}, but the interpretation code
+hasn't been implemented yet.''' .
+        format(*map(nori.pps, [entity_type, bundle]))
+    )
+    return None
+    #ret[1]
+    #field_name: endpoints, field_ram, etc.
+    #phpserialize.loads(data)['default_value'][0]['value'] -> '2222'
 
 
 def get_drupal_field_cardinality(db_obj, db_cur, field_name):
@@ -2816,10 +2901,16 @@ def get_drupal_field_cardinality(db_obj, db_cur, field_name):
     """
     Get the allowed cardinality for a specified Drupal field.
 
+    Returns None on error, an empty array if there are no results, or
+    a single row tuple.
+
     Parameters:
         db_obj: the database connection object to use
         db_cur: the database cursor object to use
         field_name: the name of the field
+
+    Dependencies:
+        modules: nori
 
     """
 
@@ -2843,21 +2934,356 @@ AND deleted = 0
         return None
     if not ret[1]:
         return []
-###TODO
-    # in principle, there can only be at most one row, but...
+    # in theory, Drupal field names are unique, but it's not enforced in
+    # the database, so add a sanity check
+    if len(ret[1]) != 1:
+        nori.core.email_logger.error(
+            'Warning: multiple entries for Drupal field name {0}.' .
+            format(nori.pps(field_name))
+        )
+        return None
     return ret[1][0]
 
 
-#def insert_drupal_rel:
-# default field values
+def get_drupal_term_id(db_obj, db_cur, vocab_name, term_name):
+
+    """
+    Get the term ID for a specified Drupal vocabulary term.
+
+    Returns None on error, an empty array if there are no results, or
+    a single row tuple.
+
+    Parameters:
+        db_obj: the database connection object to use
+        db_cur: the database cursor object to use
+        vocab_name: the machine name of the vocabulary
+        term_name: the name of the term
+
+    Dependencies:
+        modules: nori
+
+    """
+
+    # query string and arguments
+    query_str = (
+'''
+SELECT tid
+FROM taxonomy_term_data as t
+LEFT JOIN taxonomy_vocabulary as v
+ON v.vid = t.vid
+WHERE v.machine_name = %s
+AND t.name = %s
+'''
+    )
+    query_args = [vocab_name, term_name]
+
+    # execute the query
+    if not db_obj.execute(db_cur, query_str.strip(), query_args,
+                          has_results=True):
+        return None
+    ret = db_obj.fetchall(db_cur)
+    if not ret[0]:
+        return None
+    if not ret[1]:
+        return []
+    if len(ret[1]) != 1:
+        nori.core.email_logger.error(
+            'Warning: multiple entries for term {0} in Drupal\n'
+            'vocabulary {1}.'.format(*map(nori.pps, [term_name,
+                                                     vocab_name]))
+        )
+        return None
+    return ret[1][0]
 
 
-#def insert_drupal_fc:
-# default field values
+def insert_drupal_relation(db_obj, db_cur, e1_entity_type, e1_entity_id,
+                           relation_type, e2_entity_type, e2_entity_id):
+
+    """
+    Insert a Drupal relation.
+
+    Returns True (success) / False (failure).
+
+    Parameters:
+        db_obj: the database connection object to use
+        db_cur: the database cursor object to use
+        e1_entity_type: the entity type (e.g., 'node') of the relation's
+                        first endpoint
+        e1_entity_id: the entity ID of the relation's first endpoint
+        relation_type: the type string / bundle of the relation
+        e2_entity_type: the entity type (e.g., 'node') of the relation's
+                        second endpoint
+        e2_entity_id: the entity ID of the relation's second endpoint
+
+    Dependencies:
+        modules: time, nori
+
+    """
+
+    # prepare for a transaction
+    db_ac = db_obj.autocommit(None)
+    db_obj.autocommit(False)
+
+    # insert the data row for the relation
+    query_str = (
+'''
+INSERT INTO relation
+(relation_type, vid, uid, created, changed, arity)
+VALUES
+(%s, 0, 1, %s, %s, 2)
+'''
+    )
+    cur_time = int(time.time())
+    query_args = [relation_type, cur_time, cur_time]
+    if not db_obj.execute(db_cur, query_str.strip(), query_args,
+                          has_results=False):
+        # won't be reached currently; script will exit on errors
+        db_obj.rollback()  # ignore errors
+        db_obj.autocommit(db_ac)
+        return False
+
+    # get the new relation ID
+    ret = db_obj.get_last_id(db_cur)
+    if not ret[0]:
+        # won't be reached currently; script will exit on errors
+        db_obj.rollback()  # ignore errors
+        db_obj.autocommit(db_ac)
+        return False
+    rid = ret[1]
+
+    # insert the revision row for the relation
+    query_str = (
+'''
+INSERT INTO relation_revision
+(rid, relation_type, uid, created, changed, arity)
+VALUES
+(%s, %s, 1, %s, %s, 2)
+'''
+    )
+    cur_time = int(time.time())
+    query_args = [rid, relation_type, cur_time, cur_time]
+    if not db_obj.execute(db_cur, query_str.strip(), query_args,
+                          has_results=False):
+        # won't be reached currently; script will exit on errors
+        db_obj.rollback()  # ignore errors
+        db_obj.autocommit(db_ac)
+        return False
+
+    # get the new revision ID
+    ret = db_obj.get_last_id(db_cur)
+    if not ret[0]:
+        # won't be reached currently; script will exit on errors
+        db_obj.rollback()  # ignore errors
+        db_obj.autocommit(db_ac)
+        return False
+    vid = ret[1]
+
+    # update the relation row with the revision ID
+    query_str = (
+'''
+UPDATE relation
+SET vid = %s
+WHERE rid = %s
+'''
+    query_args = [vid, rid]
+    if not db_obj.execute(db_cur, query_str.strip(), query_args,
+                          has_results=False):
+        # won't be reached currently; script will exit on errors
+        db_obj.rollback()  # ignore errors
+        db_obj.autocommit(db_ac)
+        return False
+
+    # insert data and revision rows for the endpoints
+    endpoints = [(0, e1_entity_type, e1_entity_id),
+                 (1, e2_entity_type, e2_entity_id)]
+    for i, ep_entity_type, ep_entity_id in endpoints:
+        for table_infix in ['data', 'revision']:
+            # query string and arguments
+            query_str = (
+'''
+INSERT INTO field_{0}_endpoints
+(entity_type, bundle, deleted, entity_id, revision_id, language, delta,
+    endpoints_entity_type, endpoints_entity_id, endpoints_r_index)
+VALUES
+('relation', %s, 0, %s, %s, 'und', %s, %s, %s, %s)
+''' .
+                format(table_infix)
+            )
+            query_args = [relation_type, rid, vid, i, ep_entity_type,
+                          ep_entity_id, i]
+            if not db_obj.execute(db_cur, query_str.strip(), query_args,
+                                  has_results=False):
+                # won't be reached currently; script will exit on errors
+                db_obj.rollback()  # ignore errors
+                db_obj.autocommit(db_ac)
+                return False
+
+    # finish the transaction
+    ret = db_obj.commit()
+    db_obj.autocommit(db_ac)
+    if not ret:
+        return False
+
+    # default field values
+    f_defs = get_drupal_field_defaults(db_obj, db_cur, 'relation',
+                                       relation_type)
+    if f_defs is None:
+        return False
+    for f_def in f_defs:
+        if not insert_drupal_field(db_obj, db_cur, 'relation',
+                                   relation_type, rid, vid, f_def):
+            return False
+
+    return True
 
 
-def insert_drupal_field(db_obj, db_cur, entity_type, bundle, entity_id,
-                        revision_id, field_cv):
+def insert_drupal_fc(db_obj, db_cur, entity_type, bundle, entity_id,
+                      revision_id, fc_cv):
+
+    """
+    Insert a Drupal field collection.
+
+    Returns True (success) / False (failure).
+
+    Parameters:
+        db_obj: the database connection object to use
+        db_cur: the database cursor object to use
+        entity_type: the entity type (e.g., 'node') of the FC's parent
+        bundle: the bundle (e.g., node content type) of the FC's parent
+        entity_id: the ID of the FC's parent
+        revision_id: the revision ID of the FC's parent
+        fc_cv: the entry for the field collection in a template key_cv
+               or value_cv sequence
+
+    Dependencies:
+        modules: nori
+
+    """
+
+    # fc details
+    fc_ident = fc_cv[0]
+    fc_value_type = fc_cv[1]
+    fc_value = fc_cv[2]
+    fc_type = fc_ident[1]
+    fc_id_type = fc_ident[2]
+
+    # prepare for a transaction
+    db_ac = db_obj.autocommit(None)
+    db_obj.autocommit(False)
+
+    # insert the data row for the field_collection
+    if fc_id_type == 'id':
+        # this is kind of silly, but since I already put in the
+        # capability elsewhere, I might as well allow specification by
+        # ID here...
+        query_str = (
+'''
+INSERT INTO field_collection_item
+(item_id, revision_id, field_name, archived, label)
+VALUES
+(%s, 0, %s, 0, '')
+'''
+        )
+        query_args = [fc_value, fc_type]
+    elif fc_id_type == 'label':
+        query_str = (
+'''
+INSERT INTO field_collection_item
+(revision_id, field_name, archived, label)
+VALUES
+(0, %s, 0, %s)
+'''
+        )
+        query_args = [('field_' + fc_type), fc_value]
+    if not db_obj.execute(db_cur, query_str.strip(), query_args,
+                          has_results=False):
+        # won't be reached currently; script will exit on errors
+        db_obj.rollback()  # ignore errors
+        db_obj.autocommit(db_ac)
+        return False
+
+    # get the new field_collection ID
+    if fc_id_type == 'label':
+        ret = db_obj.get_last_id(db_cur)
+        if not ret[0]:
+            # won't be reached currently; script will exit on errors
+            db_obj.rollback()  # ignore errors
+            db_obj.autocommit(db_ac)
+            return False
+        fcid = ret[1]
+
+    # insert the revision row for the field_collection
+    query_str = (
+'''
+INSERT INTO field_collection_item_revision
+(item_id)
+VALUES
+(%s)
+'''
+    )
+    query_args = [fcid]
+    if not db_obj.execute(db_cur, query_str.strip(), query_args,
+                          has_results=False):
+        # won't be reached currently; script will exit on errors
+        db_obj.rollback()  # ignore errors
+        db_obj.autocommit(db_ac)
+        return False
+
+    # get the new revision ID
+    ret = db_obj.get_last_id(db_cur)
+    if not ret[0]:
+        # won't be reached currently; script will exit on errors
+        db_obj.rollback()  # ignore errors
+        db_obj.autocommit(db_ac)
+        return False
+    vid = ret[1]
+
+    # update the field collection row with the revision ID
+    query_str = (
+'''
+UPDATE field_collection_item
+SET revision_id = %s
+WHERE item_id = %s
+'''
+    query_args = [vid, fcid]
+    if not db_obj.execute(db_cur, query_str.strip(), query_args,
+                          has_results=False):
+        # won't be reached currently; script will exit on errors
+        db_obj.rollback()  # ignore errors
+        db_obj.autocommit(db_ac)
+        return False
+
+    # insert data and revision rows for the field collection field
+    fcf_cv = (('field', fc_type), 'integer', fcid)
+    extra_data = [('field_' + fc_type + '_revision_id', vid)]
+    if not insert_drupal_field(db_obj, db_cur, False, entity_type, bundle,
+                               entity_id, revision_id, fcf_cv, extra_data):
+            # won't be reached currently; script will exit on errors
+            db_obj.rollback()  # ignore errors
+            db_obj.autocommit(db_ac)
+            return False
+
+    # finish the transaction
+    ret = db_obj.commit()
+    db_obj.autocommit(db_ac)
+    if not ret:
+        return False
+
+    # default field values
+    f_defs = get_drupal_field_defaults(db_obj, db_cur,
+                                       'field_collection_item', fc_type)
+    if f_defs is None:
+        return False
+    for f_def in f_defs:
+        if not insert_drupal_field(db_obj, db_cur, 'field_collection_item',
+                                   fc_type, fcid, vid, f_def):
+            return False
+
+    return True
+
+
+def insert_drupal_field(db_obj, db_cur, no_trans, entity_type, bundle,
+                        entity_id, revision_id, field_cv, extra_data):
 
     """
     Insert a Drupal field entry.
@@ -2867,6 +3293,9 @@ def insert_drupal_field(db_obj, db_cur, entity_type, bundle, entity_id,
     Parameters:
         db_obj: the database connection object to use
         db_cur: the database cursor object to use
+        no_trans: if true, don't wrap the call in a new DB transaction;
+                  use this when the caller is already handling
+                  transaction management
         entity_type: the entity type (e.g., 'node') of the field's
                      parent
         bundle: the bundle (e.g., node content type) of the field's
@@ -2875,9 +3304,11 @@ def insert_drupal_field(db_obj, db_cur, entity_type, bundle, entity_id,
         revision_id: the revision ID of the field's parent
         field_cv: the entry for the field in a template key_cv or
                   value_cv sequence
+        extra_data: a sequence of (column name, value) tuples to add to
+                    the insert query
 
     Dependencies:
-        modules: nori
+        modules: operator, nori
 
     """
 
@@ -2892,7 +3323,7 @@ def insert_drupal_field(db_obj, db_cur, entity_type, bundle, entity_id,
     if not f_card:
         nori.core.email_logger.error(
             'Warning: could not get the cardinality of Drupal field {0};\n'
-            'skipping insert.'.format(field_name)
+            'skipping insert.'.format(nori.pps(field_name))
         )
         return False
     f_cur_delta = get_drupal_max_delta(db_obj, db_cur, entity_type, bundle,
@@ -2927,17 +3358,68 @@ Skipping insert; manual intervention required.''' .
         )
         return False
 
-    # query string and arguments
-    query_str = (
+    # handle taxonomy terms
+    if field_value_type.startswith('term: '):
+        ret = get_drupal_term_id(db_obj, db_cur, field_value_type[6:],
+                                 term_name)
+        if not ret:
+            nori.core.email_logger.error(
+                'Warning: could not get the ID of term {0} in Drupal\n'
+                'vocabulary {1}; skipping insert.' .
+                format(*map(nori.pps, [term_name, field_value_type[6:]]))
+            )
+            return False
+        field_value = ret[0]
+        value_column = 'field_' + field_name + '_tid'
+    else:
+        value_column = 'field_' + field_name + '_value'
+
+    # handle extra data
+    extra_columns = ''
+    extra_placeholders = ''
+    extra_values = []
+    if extra_data:
+        extra_columns = (
+            ', ' + ', '.join(map(operator.itemgetter(0), extra_data))
+        )
+        extra_placeholders = (
+            ', ' + ', '.join(map(lambda x: '%s', extra_data))
+        )
+        extra_values = map(operator.itemgetter(1), extra_data)
+
+    # insert data and revision rows
+    if not no_trans:
+        db_ac = db_obj.autocommit(None)
+        db_obj.autocommit(False)
+    for table_infix in ['data', 'revision']:
+        # query string and arguments
+        query_str = (
 '''
-INSERT INTO field_data_field_{0}
+INSERT INTO field_{0}_field_{1}
 (entity_type, bundle, deleted, entity_id, revision_id, language, delta,
-field_{0}_value)
+    {2}{3})
 VALUES
-({1}, {2}, 0, {3}, {4}, ?, {5}, {6})
-'''
-    )
-###TODO taxonomies, revision, transaction
+(%s, %s, 0, %s, %s, 'und', %s, %s{4})
+''' .
+            format(table_infix, field_name, value_column, extra_columns,
+                   extra_placeholders)
+        )
+        query_args = [entity_type, bundle, entity_id, revision_id,
+                      (f_cur_delta[0] + 1), field_value] + extra_values
+
+        if not db_obj.execute(db_cur, query_str.strip(), query_args,
+                              has_results=False):
+            # won't be reached currently; script will exit on errors
+            if not no_trans:
+                db_obj.rollback()  # ignore errors
+                db_obj.autocommit(db_ac)
+            return False
+    if not no_trans:
+        ret = db_obj.commit()
+        db_obj.autocommit(db_ac)
+        return ret
+    else:
+        return True
 
 
 ###########################
