@@ -191,6 +191,63 @@ Can be True or False.
     cl_coercer=nori.str_to_bool,
 )
 
+nori.core.config_settings['pre_action_callback'] = dict(
+    descr=(
+'''
+A function to call before performing any database actions, or None.
+
+This is intended for things like putting a web site into maintenance mode to
+prevent database changes while the script is active.
+
+If this is not None, the function is called once, right before the diff /
+sync is started.
+'''
+    ),
+    default=None,
+)
+
+nori.core.config_settings['pre_action_callback_args'] = dict(
+    descr=(
+'''
+The arguments for the pre-action callback.
+
+Must be a tuple of (*args, **kwargs).
+
+Ignored if pre_action_callback is None.
+'''
+    ),
+    default=([], {}),
+)
+
+nori.core.config_settings['post_action_callback'] = dict(
+    descr=(
+'''
+A function to call (once) after performing all database actions, or None.
+
+This is separate from the change callbacks (see below), and is intended for
+things like taking a web site out of maintenance mode (see
+pre_action_callback, above)
+
+If this is not None, the function is called once, right after the diff /
+sync is finished.
+'''
+    ),
+    default=None,
+)
+
+nori.core.config_settings['post_action_callback_args'] = dict(
+    descr=(
+'''
+The arguments for the post-action callback.
+
+Must be a tuple of (*args, **kwargs).
+
+Ignored if post_action_callback is None.
+'''
+    ),
+    default=([], {}),
+)
+
 nori.core.config_settings['templates'] = dict(
     descr=(
 '''
@@ -830,6 +887,24 @@ def validate_config():
     nori.setting_check_list('action', ['diff', 'sync'])
     nori.setting_check_type('reverse', bool)
     nori.setting_check_type('bidir', bool)
+    nori.setting_check_callable('pre_action_callback', may_be_none=True)
+    if nori.core.cfg['pre_action_callback']:
+        nori.setting_check_type('pre_action_callback_args',
+                                nori.core.CONTAINER_TYPES)
+        nori.setting_check_len('pre_action_callback_args', 2, 2)
+        nori.setting_check_type(('pre_action_callback_args', 0),
+                                nori.core.CONTAINER_TYPES)
+        nori.setting_check_type(('pre_action_callback_args', 1),
+                                nori.core.MAPPING_TYPES)
+    nori.setting_check_callable('post_action_callback', may_be_none=True)
+    if nori.core.cfg['post_action_callback']:
+        nori.setting_check_type('post_action_callback_args',
+                                nori.core.CONTAINER_TYPES)
+        nori.setting_check_len('post_action_callback_args', 2, 2)
+        nori.setting_check_type(('post_action_callback_args', 0),
+                                nori.core.CONTAINER_TYPES)
+        nori.setting_check_type(('post_action_callback_args', 1),
+                                nori.core.MAPPING_TYPES)
     nori.setting_check_list('template_mode', ['all', 'include', 'exclude'])
     if nori.core.cfg['template_mode'] != 'all':
         nori.setting_check_not_empty('template_list')
@@ -4350,6 +4425,18 @@ def run_mode_hook():
     d_db.autocommit(True)
     d_cur = d_db.cursor(False)
 
+    # pre-action callback
+    pa = nori.core.cfg['pre_action_callback']
+    pa_arg_t = nori.core.cfg['pre_action_callback_args']
+    if pa and callable(pa):
+        nori.core.status_logger.info(
+            'Calling pre-action callback...'
+        )
+        ret = pa(*pa_arg_t[0], **pa_arg_t[1])
+        nori.core.status_logger.info(
+            'Callback complete.' if ret else 'Callback failed.'
+        )
+
     # template loop
     for t_index, template in enumerate(nori.core.cfg['templates']):
         # get settings
@@ -4513,6 +4600,18 @@ def run_mode_hook():
             nori.core.status_logger.info(
                 'Callback complete.' if ret else 'Callback failed.'
             )
+
+    # post-action callback
+    pa = nori.core.cfg['post_action_callback']
+    pa_arg_t = nori.core.cfg['post_action_callback_args']
+    if pa and callable(pa):
+        nori.core.status_logger.info(
+            'Calling post-action callback...'
+        )
+        ret = pa(*pa_arg_t[0], **pa_arg_t[1])
+        nori.core.status_logger.info(
+            'Callback complete.' if ret else 'Callback failed.'
+        )
 
     # email/log report
     if diff_dict:
