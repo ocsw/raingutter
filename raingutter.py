@@ -478,7 +478,7 @@ Ignored if key_mode is 'all'.
 nori.core.config_settings['sourcedb_change_callback'] = dict(
     descr=(
 '''
-Function to call if the source database was changed, or None.
+A function to call if the source database was changed, or None.
 
 This is separate from the per-template functions (see above), and is
 intended for overall cleanup.  In particular, it is useful for clearing
@@ -511,7 +511,7 @@ Ignored if source_db_change_callback is None.
 nori.core.config_settings['destdb_change_callback'] = dict(
     descr=(
 '''
-Function to call if the destination database was changed, or None.
+A function to call if the destination database was changed, or None.
 
 This is separate from the per-template functions (see above), and is
 intended for overall cleanup.  In particular, it is useful for clearing
@@ -1879,7 +1879,7 @@ ORDER BY k_node.title, k_node.nid, e1.entity_id, v_node.title, v_node.nid
         rel_type = rel_ident[1]
 
         # node2 details
-        node2_cv = key_cv[0]
+        node2_cv = key_cv[2]
         node2_ident = node2_cv[0]
         node2_value_type = node2_cv[1]
         if len(node2_cv) > 2:
@@ -2401,7 +2401,7 @@ AND {1} = %s
         rel_type = rel_ident[1]
 
         # node2 details
-        node2_cv = key_cv[0]
+        node2_cv = key_cv[2]
         node2_ident = node2_cv[0]
         node2_value_type = node2_cv[1]
         node2_value = node2_cv[2]
@@ -2645,6 +2645,13 @@ Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, key_cv, value_cv,
         node_type = node_ident[1]
         node_id_type = node_ident[2]
 
+        # field details
+        field_cv = value_cv[0]
+        field_ident = field_cv[0]
+        field_value_type = field_cv[1]
+        field_value = field_cv[2]
+        field_name = field_ident[1]
+
         # get the node IDs
         ret = get_drupal_node_ids(db_obj, db_cur, node_cv)
         if ret is None:
@@ -2773,7 +2780,7 @@ Skipping insert.''' .
         rel_type = rel_ident[1]
 
         # node2 details
-        node2_cv = key_cv[0]
+        node2_cv = key_cv[2]
         node2_ident = node2_cv[0]
         node2_value_type = node2_cv[1]
         node2_value = node2_cv[2]
@@ -2907,6 +2914,13 @@ Skipping insert.''' .
         fc_value = fc_cv[2]
         fc_type = fc_ident[1]
         fc_id_type = fc_ident[2]
+
+        # field details
+        field_cv = value_cv[0]
+        field_ident = field_cv[0]
+        field_value_type = field_cv[1]
+        field_value = field_cv[2]
+        field_name = field_ident[1]
 
         # get the node IDs
         ret = get_drupal_node_ids(db_obj, db_cur, node_cv)
@@ -3203,6 +3217,7 @@ AND bundle = %s
 AND entity_id = %s
 AND revision_id = %s
 AND deleted = 0
+GROUP BY entity_type, bundle, entity_id, revision_id
 ''' .
         format(field_name)
     )
@@ -3266,6 +3281,7 @@ WHERE fci.entity_type = %s
 AND fci.bundle = %s
 AND fc.deleted = 0
 '''
+    )
     query_args = [entity_type, bundle]
 
     # execute the query
@@ -3493,6 +3509,7 @@ UPDATE relation
 SET vid = %s
 WHERE rid = %s
 '''
+    )
     query_args = [vid, rid]
     if not db_obj.execute(db_cur, query_str.strip(), query_args,
                           has_results=False):
@@ -3654,6 +3671,7 @@ UPDATE field_collection_item
 SET revision_id = %s
 WHERE item_id = %s
 '''
+    )
     query_args = [vid, fcid]
     if not db_obj.execute(db_cur, query_str.strip(), query_args,
                           has_results=False):
@@ -3739,7 +3757,7 @@ def insert_drupal_field(db_obj, db_cur, entity_type, bundle, entity_id,
         return None
     f_cur_delta = get_drupal_max_delta(db_obj, db_cur, entity_type, bundle,
                                        entity_id, revision_id, field_name)
-    if f_delta is None:
+    if f_cur_delta is None:
         nori.core.email_logger.error(
 '''Warning: could not get the maximum delta of Drupal field {0}
 under the following parent entity:
@@ -3752,8 +3770,8 @@ Skipping insert.''' .
                                    entity_id, revision_id]))
         )
         return None
-    if not_f_delta:
-        f_delta = -1
+    if not f_cur_delta:
+        f_cur_delta = (-1, )
     if f_card[0] != -1 and f_cur_delta[0] >= (f_card[0] - 1):
         # no more room
         nori.core.email_logger.error(
@@ -3816,7 +3834,9 @@ VALUES
                    extra_placeholders)
         )
         query_args = [entity_type, bundle, entity_id, revision_id,
-                      (f_cur_delta[0] + 1), field_value] + extra_values
+                      (f_cur_delta[0] + 1), field_value]
+        if extra_values:
+            query_args += extra_values
 
         if not db_obj.execute(db_cur, query_str.strip(), query_args,
                               has_results=False):
@@ -3852,7 +3872,6 @@ def clear_drupal_cache(db_obj, db_cur):
             ret = db_obj.execute(db_cur,
                                  'DELETE FROM {0};'.format(table[0]),
                                  has_results=False)
-            print(ret)
             if not ret:
                 return False
     return True
@@ -4274,18 +4293,19 @@ def do_sync(t_index, s_row, d_db, d_cur, diff_k, diff_i):
             'Updating destination database...'
         )
     global_callback_needed = False
-    successes, failures = dest_func(*dest_args, db_obj=d_db, db_cur=d_cur,
-                                    mode=mode, **new_dest_kwargs)
-    if failures == 0:  # all succeeded
+    fulls, partials, failures = dest_func(
+        *dest_args, db_obj=d_db, db_cur=d_cur, mode=mode, **new_dest_kwargs
+    )
+    if failures == 0 and partials == 0:  # all succeeded
         status = True
         nori.core.status_logger.info(mode.capitalize() + ' succeeded.')
-    elif successes > 0:  # some succeeded, some failed
+    elif fulls == 0 and partials == 0:  # all failed
+        status = None
+        nori.core.status_logger.info(mode.capitalize() + ' failed.')
+    else:  # some succeeded, some failed
         status = False
         nori.core.status_logger.info(mode.capitalize() +
                                      ' partially succeeded.')
-    elif successes == 0:  # all failed
-        status = None
-        nori.core.status_logger.info(mode.capitalize() + ' failed.')
     if status is not None:
         global_callback_needed = True
         update_diff(diff_k, diff_i, status)
