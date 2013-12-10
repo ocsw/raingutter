@@ -106,6 +106,10 @@ NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
 EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 '''
 
+# see pre_action_drupal_readonly(), post_action_drupal_readonly()
+s_drupal_readonly = None
+d_drupal_readonly = None
+
 #
 # This ordered dict contains the database diffs.  The format is one of:
 #     * rendered database 'key' strings ->
@@ -199,8 +203,17 @@ A function to call before performing any database actions, or None.
 This is intended for things like putting a web site into maintenance mode to
 prevent database changes while the script is active.
 
-If this is not None, the function is called once, right before the diff /
-sync is started.
+The callback function must take these keyword arguments in addition to any
+other *args and **kwargs:
+    s_db: the source-database connection object to use
+    s_cur: the source-database cursor object to use
+    d_db: the destination-database connection object to use
+    d_cur: the destination-database cursor object to use
+Note that 'source' and 'destination' here are subject to the value of the
+'reverse' setting.
+
+If this setting is not None, the function is called once, right before the
+diff / sync is started.
 '''
     ),
     default=None,
@@ -228,8 +241,17 @@ This is separate from the change callbacks (see below), and is intended for
 things like taking a web site out of maintenance mode (see
 pre_action_callback, above)
 
-If this is not None, the function is called once, right after the diff /
-sync is finished.
+The callback function must take these keyword arguments in addition to any
+other *args and **kwargs:
+    s_db: the source-database connection object to use
+    s_cur: the source-database cursor object to use
+    d_db: the destination-database connection object to use
+    d_cur: the destination-database cursor object to use
+Note that 'source' and 'destination' here are subject to the value of the
+'reverse' setting.
+
+If this setting is not None, the function is called once, right after the
+diff / sync is finished.
 '''
     ),
     default=None,
@@ -4452,7 +4474,8 @@ def run_mode_hook():
         nori.core.status_logger.info(
             'Calling pre-action callback...'
         )
-        ret = pa(*pa_arg_t[0], **pa_arg_t[1])
+        ret = pa(*pa_arg_t[0], s_db=s_db, s_cur=s_cur, d_db=d_db,
+                 d_cur=d_cur, **pa_arg_t[1])
         nori.core.status_logger.info(
             'Callback complete.' if ret else 'Callback failed.'
         )
@@ -4628,7 +4651,8 @@ def run_mode_hook():
         nori.core.status_logger.info(
             'Calling post-action callback...'
         )
-        ret = pa(*pa_arg_t[0], **pa_arg_t[1])
+        ret = pa(*pa_arg_t[0], s_db=s_db, s_cur=s_cur, d_db=d_db,
+                 d_cur=d_cur, **pa_arg_t[1])
         nori.core.status_logger.info(
             'Callback complete.' if ret else 'Callback failed.'
         )
