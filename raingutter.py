@@ -3274,8 +3274,9 @@ WHERE item_id = %s
     # insert data and revision rows for the field collection field
     fcf_cv = (('field', fc_type), 'integer', fcid)
     extra_data = [('field_' + fc_type + '_revision_id', vid)]
-    if not insert_drupal_field(db_obj, db_cur, False, entity_type, bundle,
-                               entity_id, revision_id, fcf_cv, extra_data):
+    if not insert_drupal_field(db_obj, db_cur, entity_type, bundle,
+                               entity_id, revision_id, fcf_cv, extra_data,
+                               True):
             # won't be reached currently; script will exit on errors
             db_obj.rollback()  # ignore errors
             db_obj.autocommit(db_ac)
@@ -3300,8 +3301,9 @@ WHERE item_id = %s
     return (True, fcid, vid)
 
 
-def insert_drupal_field(db_obj, db_cur, no_trans, entity_type, bundle,
-                        entity_id, revision_id, field_cv, extra_data):
+def insert_drupal_field(db_obj, db_cur, entity_type, bundle, entity_id,
+                        revision_id, field_cv, extra_data=[],
+                        no_trans=False):
 
     """
     Insert a Drupal field entry.
@@ -3311,9 +3313,6 @@ def insert_drupal_field(db_obj, db_cur, no_trans, entity_type, bundle,
     Parameters:
         db_obj: the database connection object to use
         db_cur: the database cursor object to use
-        no_trans: if true, don't wrap the call in a new DB transaction;
-                  use this when the caller is already handling
-                  transaction management
         entity_type: the entity type (e.g., 'node') of the field's
                      parent
         bundle: the bundle (e.g., node content type) of the field's
@@ -3324,6 +3323,9 @@ def insert_drupal_field(db_obj, db_cur, no_trans, entity_type, bundle,
                   value_cv sequence
         extra_data: a sequence of (column name, value) tuples to add to
                     the insert query
+        no_trans: if true, don't wrap the call in a new DB transaction;
+                  use this when the caller is already handling
+                  transaction management
 
     Dependencies:
         modules: operator, nori
