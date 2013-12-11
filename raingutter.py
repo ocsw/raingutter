@@ -41,7 +41,6 @@ try:
 except ImportError:
     pass
 
-sys.path.insert(0, '/home/dmalament')
 import nori
 
 

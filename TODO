@@ -6,8 +6,6 @@ testing, incl.
     get last id
     postgres table list
 
-nori import
-
 refs to rg funcs from config
 
 redundant output log messages?
