@@ -1535,7 +1535,7 @@ def drupal_db_query(db_obj, db_cur, mode, key_cv, value_cv,
                 collection is also a 'value' entry that must be
                 changed): ('label',) [a 1-tuple]
 
-    Some examples:
+    For example:
         key_cv = [
             (
                 ('node', 'server', 'title'),
