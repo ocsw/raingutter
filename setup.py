@@ -19,7 +19,7 @@ setup(
     version='0.9',
     #packages=[],
     #package_dir={},
-    py_modules=['raingutter.py'],
+    py_modules=['raingutter'],
     install_requires=['phpserialize'],
     #extras_require={},
 
