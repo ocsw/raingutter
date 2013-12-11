@@ -2,11 +2,11 @@ TODO
 
 configs for OCS fields
 
-testing, incl.
-    get last id
-    postgres table list
+testing
 
 ---
+
+remove cursors?
 
 no_replicate (SET sql_log_bin=0/1; but - check/store)
 
