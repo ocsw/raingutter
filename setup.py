@@ -14,7 +14,7 @@ def read(fname):
     return open(os.path.join(os.path.dirname(__file__), fname)).read()
 
 setup(
-    # required info
+    # required and packaging/installation info
     name='raingutter',
     version='0.9',
     #packages=[],
@@ -22,6 +22,13 @@ setup(
     py_modules=['raingutter'],
     install_requires=['phpserialize'],
     #extras_require={},
+    entry_points = {
+        'console_scripts': [
+            'raingutter = raingutter:main',
+        ],
+        #'gui_scripts': [
+        #]
+    },
 
     # PyPI metadata
     description='A diff/sync tool for MySQL databases, including Drupal.',
