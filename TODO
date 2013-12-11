@@ -1,33 +1,24 @@
 TODO
 
-inner joins for relations, etc?
 configs for OCS fields
-testing
+
+testing, incl.
+    get last id
+    postgres table list
 
 nori import
 
 refs to rg funcs from config
 
----
-
 redundant output log messages?
 
 db/ssh conn msgs: identifiers
 
-get last id
-postgres table list
-callable setting check
-
-no_replicate for updates
-    SET sql_log_bin=0;
-    SET sql_log_bin=1;
-    but - check/store
-
-more examples/sql, esp for drupal?
-
-phpserialize
-
 ---
+
+no_replicate (SET sql_log_bin=0/1; but - check/store)
+
+generic_db_insert
 
 handle non-unique field titles, fc labels, relations
     probably need to have selects pass IDs, deltas back
@@ -39,6 +30,7 @@ handle interpreting drupal field defaults
 check min/max, other constraints when adding fields (including defaults)
 
 docstring / USAGE / mod notes re chains, phpserialize
+more examples/sql, esp for drupal?
 
 error handling: exit/skip?
 
@@ -47,3 +39,5 @@ autocommit options
 node -> title, fc -> label, etc. (?)
 
 user ID option?
+
+testing with python 3
