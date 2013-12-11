@@ -6,12 +6,6 @@ testing, incl.
     get last id
     postgres table list
 
-refs to rg funcs from config
-
-redundant output log messages?
-
-db/ssh conn msgs: identifiers
-
 ---
 
 no_replicate (SET sql_log_bin=0/1; but - check/store)
