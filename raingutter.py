@@ -30,6 +30,7 @@ import logging
 import logging.handlers
 import copy
 import time
+import atexit
 
 
 #########
@@ -112,6 +113,9 @@ Problem with a Drupal database.
 '''
     ),
 )
+
+# see the post_action_callbacks setting and run_mode_hook()
+post_action_callbacks = []
 
 # see pre_action_drupal_readonly(), post_action_drupal_readonly()
 s_drupal_readonly = None
@@ -222,15 +226,19 @@ Can be True or False.
     cl_coercer=nori.str_to_bool,
 )
 
-nori.core.config_settings['pre_action_callback'] = dict(
+nori.core.config_settings['pre_action_callbacks'] = dict(
     descr=(
 '''
-A function to call before performing any database actions, or None.
+Functions to call before performing any database actions, or None.
 
 This is intended for things like putting a web site into maintenance mode to
 prevent database changes while the script is active.
 
-The callback function must take these keyword arguments in addition to any
+If the setting is not None, it must contain a sequence of tuples in the
+format:
+    (function, *args, **kwargs)
+
+The callback functions must take these keyword arguments in addition to any
 other *args and **kwargs:
     s_db: the source-database connection object to use
     s_cur: the source-database cursor object to use
@@ -239,36 +247,29 @@ other *args and **kwargs:
 Note that 'source' and 'destination' here are subject to the value of the
 'reverse' setting.
 
-If this setting is not None, the function is called once, right before the
-diff / sync is started.
+If this setting is not None, the functions are called once, right before the
+diff / sync is started, in order.
 '''
     ),
     default=None,
 )
 
-nori.core.config_settings['pre_action_callback_args'] = dict(
+nori.core.config_settings['post_action_callbacks'] = dict(
     descr=(
 '''
-The arguments for the pre-action callback.
-
-Must be a tuple of (*args, **kwargs).
-
-Ignored if pre_action_callback is None.
-'''
-    ),
-    default=([], {}),
-)
-
-nori.core.config_settings['post_action_callback'] = dict(
-    descr=(
-'''
-A function to call (once) after performing all database actions, or None.
+Functions to call (once) after performing all database actions, or None.
 
 This is separate from the change callbacks (see below), and is intended for
 things like taking a web site out of maintenance mode (see
 pre_action_callback, above)
 
-The callback function must take these keyword arguments in addition to any
+If the setting is not None, it must contain a sequence of tuples in the
+format:
+    (function, *args, **kwargs, register?)
+where register is a boolean indicating if the function should be registered
+to be called even if the script exits abnormally.
+
+The callback functions must take these keyword arguments in addition to any
 other *args and **kwargs:
     s_db: the source-database connection object to use
     s_cur: the source-database cursor object to use
@@ -277,24 +278,17 @@ other *args and **kwargs:
 Note that 'source' and 'destination' here are subject to the value of the
 'reverse' setting.
 
-If this setting is not None, the function is called once, right after the
-diff / sync is finished.
+If this setting is not None, the functions are called once, right after the
+diff / sync is finished, in order.  Functions for which the register boolean
+is true will also be called once if the script exits abnormally.  Care is
+taken to prevent the functions from being called twice (once when finished,
+once on exit), but this may not be entirely guaranteed.  It is also not
+absolutely guaranteed that the pre-action callbacks will all be run before
+these functions, since they are registered before the pre-action functions
+are called.
 '''
     ),
     default=None,
-)
-
-nori.core.config_settings['post_action_callback_args'] = dict(
-    descr=(
-'''
-The arguments for the post-action callback.
-
-Must be a tuple of (*args, **kwargs).
-
-Ignored if post_action_callback is None.
-'''
-    ),
-    default=([], {}),
 )
 
 nori.core.config_settings['templates'] = dict(
@@ -938,24 +932,24 @@ def validate_config():
     nori.setting_check_list('action', ['diff', 'sync'])
     nori.setting_check_type('reverse', bool)
     nori.setting_check_type('bidir', bool)
-    nori.setting_check_callable('pre_action_callback', may_be_none=True)
-    if nori.core.cfg['pre_action_callback']:
-        nori.setting_check_type('pre_action_callback_args',
-                                nori.core.CONTAINER_TYPES)
-        nori.setting_check_len('pre_action_callback_args', 2, 2)
-        nori.setting_check_type(('pre_action_callback_args', 0),
-                                nori.core.CONTAINER_TYPES)
-        nori.setting_check_type(('pre_action_callback_args', 1),
-                                nori.core.MAPPING_TYPES)
-    nori.setting_check_callable('post_action_callback', may_be_none=True)
-    if nori.core.cfg['post_action_callback']:
-        nori.setting_check_type('post_action_callback_args',
-                                nori.core.CONTAINER_TYPES)
-        nori.setting_check_len('post_action_callback_args', 2, 2)
-        nori.setting_check_type(('post_action_callback_args', 0),
-                                nori.core.CONTAINER_TYPES)
-        nori.setting_check_type(('post_action_callback_args', 1),
-                                nori.core.MAPPING_TYPES)
+
+    nori.setting_check_type('pre_action_callbacks',
+                            nori.core.CONTAINER_TYPES)
+    for i, cb_t in enumerate(nori.core.cfg['pre_action_callbacks']):
+        idx_t = ('pre_action_callbacks', i)
+        nori.setting_check_len(idx_t, 3, 3)
+        nori.setting_check_callable(idx_t + (0, ), may_be_none=False)
+        nori.setting_check_type(idx_t + (1, ), nori.core.CONTAINER_TYPES)
+        nori.setting_check_type(idx_t + (2, ), nori.core.MAPPING_TYPES)
+    nori.setting_check_type('post_action_callbacks',
+                            nori.core.CONTAINER_TYPES)
+    for i, cb_t in enumerate(nori.core.cfg['post_action_callbacks']):
+        idx_t = ('post_action_callbacks', i)
+        nori.setting_check_len(idx_t, 4, 4)
+        nori.setting_check_callable(idx_t + (0, ), may_be_none=False)
+        nori.setting_check_type(idx_t + (1, ), nori.core.CONTAINER_TYPES)
+        nori.setting_check_type(idx_t + (2, ), nori.core.MAPPING_TYPES)
+        nori.setting_check_type(idx_t + (3, ), bool)
     nori.setting_check_list('template_mode', ['all', 'include', 'exclude'])
     if nori.core.cfg['template_mode'] != 'all':
         nori.setting_check_not_empty('template_list')
@@ -4567,22 +4561,61 @@ def do_diff_sync(t_index, s_rows, d_rows, d_db, d_cur):
     return global_callback_needed
 
 
+def dispatch_post_action_callbacks(atexit, s_db, s_cur, d_db, d_cur):
+    """
+    Call the post-action callbacks, either normally or on abnormal exit.
+    Parameters:
+        atexit: True if the function is being called from the registered
+                atexit callback, False otherwise
+        s_db: the source-database connection object to use
+        s_cur: the source-database cursor object to use
+        d_db: the destination-database connection object to use
+        d_cur: the destination-database cursor object to use
+    Dependencies:
+        config settings: post_action_callbacks
+        globals: post_action_callbacks
+        functions: (callbacks)
+        modules: nori
+    """
+    if not atexit:
+        pa = nori.core.cfg['post_action_callbacks']
+    else:
+        pa = post_action_callbacks
+    num_cbs = len(pa)
+    for i, cb_t in enumerate(pa):
+        cb, args, kwargs = cb_t[0:3]  # there might be a 4th
+        nori.core.status_logger.info(
+            'Calling post-action callback {0} of {1}...' .
+            format((i + 1), num_cbs)
+        )
+        ret = cb(*args, s_db=s_db, s_cur=s_cur, d_db=d_db, d_cur=d_cur,
+                 **kwargs)
+        nori.core.status_logger.info(
+            'Callback complete.' if ret else 'Callback failed.'
+        )
+        if (not atexit) and ((cb, args, kwargs) in post_action_callbacks):
+            post_action_callbacks.remove((cb, args, kwargs))
+
+
 def run_mode_hook():
 
     """
     Do the actual work.
 
     Dependencies:
-        config settings: reverse, bidir, templates, template_mode,
+        config settings: reverse, bidir, pre_action_callbacks,
+                         post_action_callbacks, templates, template_mode,
                          template_list, sourcedb_change_callback,
                          sourcedb_change_callback_args,
                          destdb_change_callback,
                          destdb_change_callback_args
-        globals: (some of) T_*, diff_dict, sourcedb, destdb
-        functions: generic_db_query(), drupal_db_query(), key_filter(),
-                   log_diff(), do_diff_report(), do_diff_sync(), (functions
-                   in templates), (global callback functions)
-        modules: nori
+        globals: (some of) T_*, post_action_callbacks, diff_dict, sourcedb,
+                 destdb
+        functions: dispatch_post_action_callbacks(), generic_db_query(),
+                   drupal_db_query(), key_filter(), log_diff(),
+                   do_diff_report(), do_diff_sync(), (functions in
+                   templates), (callback functions)
+        modules: atexit, nori
         Python: 2.0/3.2, for callable()
 
     """
@@ -4605,15 +4638,29 @@ def run_mode_hook():
     d_db.autocommit(True)
     d_cur = d_db.cursor(False)
 
-    # pre-action callback
-    pa = nori.core.cfg['pre_action_callback']
-    pa_arg_t = nori.core.cfg['pre_action_callback_args']
-    if pa and callable(pa):
+    # register post-action callbacks
+    pa = nori.core.cfg['post_action_callbacks']
+    if pa and (True in [cb_t[3] for cb_t in pa]):
         nori.core.status_logger.info(
-            'Calling pre-action callback...'
+            'Registering post-action callbacks.'
         )
-        ret = pa(*pa_arg_t[0], s_db=s_db, s_cur=s_cur, d_db=d_db,
-                 d_cur=d_cur, **pa_arg_t[1])
+        for i, (cb, args, kwargs, reg) in enumerate(pa):
+            if not reg:
+                continue
+            post_action_callbacks.append((cb, args, kwargs))
+        atexit.register(dispatch_post_action_callbacks, True, s_db, s_cur,
+                        d_db, d_cur)
+
+    # pre-action callbacks
+    pa = nori.core.cfg['pre_action_callbacks']
+    num_cbs = len(pa)
+    for i, (cb, args, kwargs) in enumerate(pa):
+        nori.core.status_logger.info(
+            'Calling pre-action callback {0} of {1}...' .
+            format((i + 1), num_cbs)
+        )
+        ret = cb(*args, s_db=s_db, s_cur=s_cur, d_db=d_db, d_cur=d_cur,
+                 **kwargs)
         nori.core.status_logger.info(
             'Callback complete.' if ret else 'Callback failed.'
         )
@@ -4778,18 +4825,8 @@ def run_mode_hook():
                 'Callback complete.' if ret else 'Callback failed.'
             )
 
-    # post-action callback
-    pa = nori.core.cfg['post_action_callback']
-    pa_arg_t = nori.core.cfg['post_action_callback_args']
-    if pa and callable(pa):
-        nori.core.status_logger.info(
-            'Calling post-action callback...'
-        )
-        ret = pa(*pa_arg_t[0], s_db=s_db, s_cur=s_cur, d_db=d_db,
-                 d_cur=d_cur, **pa_arg_t[1])
-        nori.core.status_logger.info(
-            'Callback complete.' if ret else 'Callback failed.'
-        )
+    # post-action callbacks
+    dispatch_post_action_callbacks(False, s_db, s_cur, d_db, d_cur)
 
     # email/log report
     if diff_dict:
