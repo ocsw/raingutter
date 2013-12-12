@@ -1716,20 +1716,24 @@ Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, key_cv, value_cv]))
                 field_values.append(field_cv[2])
             field_names[i] = field_idents[i][1]
 
-            # field joins
+            # field join
             field_joins.append(
                 'LEFT JOIN field_data_field_{0} AS f{1}\n'
                 'ON f{1}.entity_id = node.nid\n'
                 'AND f{1}.revision_id = node.vid'.format(field_names[i], i)
             )
 
-            # handle term reference
+            # handle value types
             if field_value_types[i].startswith('term: '):
                 value_columns.append('t{0}.name'.format(i))
                 term_joins.append(
                     'LEFT JOIN taxonomy_term_data AS t{0}\n'
-                    'ON t{0}.tid = f.field_{1}_tid}' .
+                    'ON t{0}.tid = f{0}.field_{1}_tid' .
                     format(i, field_names[i])
+                )
+            elif field_value_types[i] == 'ip':
+                value_columns.append(
+                    'f{0}.field_{1}_start'.format(i, field_names[i])
                 )
             else:
                 value_columns.append(
@@ -1747,7 +1751,7 @@ Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, key_cv, value_cv]))
                 'AND (f{0}.deleted = 0 OR f{0}.deleted IS NULL)'.format(i)
             )
 
-            # order columns
+            # order column
             v_order_columns.append('f{0}.delta'.format(i))
 
         # query string and arguments
@@ -1956,7 +1960,7 @@ ORDER BY k_node.title, k_node.nid, e1.entity_id, v_node.title, v_node.nid
                 field_values.append(field_cv[2])
             field_names[i] = field_idents[i][1]
 
-            # field joins
+            # field join
             field_joins.append(
                 'LEFT JOIN field_data_field_{0} AS f{1}\n'
                 'ON f{1}.entity_id = e2.entity_id\n'
@@ -1964,13 +1968,17 @@ ORDER BY k_node.title, k_node.nid, e1.entity_id, v_node.title, v_node.nid
                 format(field_names[i], i)
             )
 
-            # handle term reference
+            # handle value types
             if field_value_types[i].startswith('term: '):
                 value_columns.append('t{0}.name'.format(i))
                 term_joins.append(
                     'LEFT JOIN taxonomy_term_data AS t{0}\n'
-                    'ON t{0}.tid = f.field_{1}_tid}' .
+                    'ON t{0}.tid = f{0}.field_{1}_tid}' .
                     format(i, field_names[i])
+                )
+            elif field_value_types[i] == 'ip':
+                value_columns.append(
+                    'f{0}.field_{1}_start'.format(i, field_names[i])
                 )
             else:
                 value_columns.append(
@@ -1993,7 +2001,7 @@ ORDER BY k_node.title, k_node.nid, e1.entity_id, v_node.title, v_node.nid
                 'AND (f{0}.deleted = 0 OR f{0}.deleted IS NULL)'.format(i)
             )
 
-            # order columns
+            # order column
             v_order_columns.append('f{0}.delta'.format(i))
 
         # query string and arguments
@@ -2120,7 +2128,7 @@ ORDER BY k_node.title, k_node.nid, e1.entity_id, {10}
                 field_values.append(field_cv[2])
             field_names[i] = field_idents[i][1]
 
-            # field joins
+            # field join
             field_joins.append(
                 'LEFT JOIN field_data_field_{0} AS f{1}\n'
                 'ON f{1}.entity_id = fci.item_id\n'
@@ -2128,13 +2136,17 @@ ORDER BY k_node.title, k_node.nid, e1.entity_id, {10}
                 format(field_names[i], i)
             )
 
-            # handle term reference
+            # handle value types
             if field_value_types[i].startswith('term: '):
                 value_columns.append('t{0}.name'.format(i))
                 term_joins.append(
                     'LEFT JOIN taxonomy_term_data AS t{0}\n'
-                    'ON t{0}.tid = f.field_{1}_tid}' .
+                    'ON t{0}.tid = f{0}.field_{1}_tid}' .
                     format(i, field_names[i])
+                )
+            elif field_value_types[i] == 'ip':
+                value_columns.append(
+                    'f{0}.field_{1}_start'.format(i, field_names[i])
                 )
             else:
                 value_columns.append(
@@ -2157,7 +2169,7 @@ ORDER BY k_node.title, k_node.nid, e1.entity_id, {10}
                 'AND (f{0}.deleted = 0 OR f{0}.deleted IS NULL)'.format(i)
             )
 
-            # order columns
+            # order column
             v_order_columns.append('f{0}.delta'.format(i))
 
         # query string and arguments
@@ -2303,15 +2315,21 @@ Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, key_cv, value_cv,
         field_value = field_cv[2]
         field_name = field_ident[1]
 
-        # handle term reference
+        # handle value types
         if field_value_type.startswith('term: '):
             term_join = (
                 'LEFT JOIN taxonomy_term_data AS t\n'
                 'ON t.name = %s'
             )
+            value_column = 'f.field_{0}_tid'.format(field_name)
             value_str = 't.tid'
+        elif field_value_type == 'ip':
+            term_join = ''
+            value_column = 'f.field_{0}_start'.format(field_name)
+            value_str = '%s'
         else:
             term_join = ''
+            value_column = 'f.field_{0}_value'.format(field_name)
             value_str = '%s'
 
         # query string and arguments
@@ -2322,17 +2340,18 @@ LEFT JOIN field_data_field_{0} AS f
 ON f.entity_id = node.nid
 AND f.revision_id = node.vid
 {1}
-SET f.field_{0}_value = {2}
+SET {2} = {3}
 WHERE (node.vid IN
        (SELECT MAX(vid)
         FROM node
         GROUP BY nid))
 AND node.type = %s
-AND {3} = %s
+AND {4} = %s
 AND (f.deleted = 0 OR f.deleted IS NULL)
 ''' .
             format(field_name,
                    term_join,
+                   value_column,
                    value_str,
                    key_column)
         )
@@ -2460,15 +2479,21 @@ AND {1} = %s
         field_value = field_cv[2]
         field_name = field_ident[1]
 
-        # handle term reference
+        # handle value types
         if field_value_type.startswith('term: '):
             term_join = (
                 'LEFT JOIN taxonomy_term_data AS t\n'
                 'ON t.name = %s'
             )
+            value_column = 'f.field_{0}_tid'.format(field_name)
             value_str = 't.tid'
+        elif field_value_type == 'ip':
+            term_join = ''
+            value_column = 'f.field_{0}_start'.format(field_name)
+            value_str = '%s'
         else:
             term_join = ''
+            value_column = 'f.field_{0}_value'.format(field_name)
             value_str = '%s'
 
         # query string and arguments
@@ -2487,13 +2512,13 @@ LEFT JOIN field_data_field_{0} AS f
 ON f.entity_id = e2.entity_id
 AND f.revision_id = e2.revision_id
 {1}
-SET f.field_{0}_value = {2}
+SET {2} = {3}
 WHERE (node1.vid IN
        (SELECT MAX(vid)
         FROM node
         GROUP BY nid))
 AND node1.type = %s
-AND {3} = %s
+AND {4} = %s
 AND (e1.revision_id IN
      (SELECT MAX(revision_id)
       FROM field_data_endpoints
@@ -2509,12 +2534,13 @@ AND (node2.vid IN
       FROM node
       GROUP BY nid))
 AND node2.type = %s
-AND {4} = %s
+AND {5} = %s
 AND f.entity_type = 'relation'
 AND (f.deleted = 0 OR f.deleted IS NULL)
 ''' .
             format(field_name,
                    term_join,
+                   value_column,
                    value_str,
                    key_column_1,
                    key_column_2)
@@ -2561,15 +2587,21 @@ AND (f.deleted = 0 OR f.deleted IS NULL)
         field_value = field_cv[2]
         field_name = field_ident[1]
 
-        # handle term reference
+        # handle value types
         if field_value_type.startswith('term: '):
             term_join = (
                 'LEFT JOIN taxonomy_term_data AS t\n'
                 'ON t.name = %s'
             )
+            value_column = 'f.field_{0}_tid'.format(field_name)
             value_str = 't.tid'
+        elif field_value_type == 'ip':
+            term_join = ''
+            value_column = 'f.field_{0}_start'.format(field_name)
+            value_str = '%s'
         else:
             term_join = ''
+            value_column = 'f.field_{0}_value'.format(field_name)
             value_str = '%s'
 
         # query string and arguments
@@ -2586,13 +2618,13 @@ LEFT JOIN field_data_field_{1} AS f
 ON f.entity_id = fci.item_id
 AND f.revision_id = fci.revision_id
 {2}
-SET f.field_{1}_value = {3}
+SET {3} = {4}
 WHERE (node.vid IN
        (SELECT MAX(vid)
         FROM node
         GROUP BY nid))
 AND node.type = %s
-AND {4} = %s'
+AND {5} = %s'
 AND fcf.entity_type = 'node'
 AND (fcf.deleted = 0 OR fcf.deleted IS NULL)
 AND (fci.revision_id IN
@@ -2600,13 +2632,14 @@ AND (fci.revision_id IN
       FROM field_collection_item
       GROUP BY item_id))
 AND (fci.archived = 0 OR fci.archived IS NULL)
-AND {5} = %s
+AND {6} = %s
 AND f.entity_type = 'field_collection_item'
 AND (f.deleted = 0 OR f.deleted IS NULL)
 ''' .
             format(fc_type,
                    field_name,
                    term_join,
+                   value_column,
                    value_str,
                    key_column_1,
                    key_column_2)
@@ -3826,19 +3859,22 @@ Skipping insert; manual intervention required.''' .
         )
         return None
 
-    # handle taxonomy terms
+    # handle value types
     if field_value_type.startswith('term: '):
         ret = get_drupal_term_id(db_obj, db_cur, field_value_type[6:],
-                                 term_name)
+                                 field_value)
         if not ret:
             nori.core.email_logger.error(
                 'Warning: could not get the ID of term {0} in Drupal\n'
                 'vocabulary {1}; skipping insert.' .
-                format(*map(nori.pps, [term_name, field_value_type[6:]]))
+                format(*map(nori.pps, [field_value, field_value_type[6:]]))
             )
             return None
         field_value = ret[0]
         value_column = 'field_' + field_name + '_tid'
+    elif field_value_type == 'ip':
+        value_column = 'field_' + field_name + '_start'
+        extra_data.append(('field_' + field_name + '_end', field_value))
     else:
         value_column = 'field_' + field_name + '_value'
 
@@ -3967,7 +4003,7 @@ def pre_action_drupal_readonly(s_db, s_cur, d_db, d_cur):
             )
             sys.exit(nori.core.exitvals['drupal']['num'])
         else:
-            drupal_readonly_status(s_db, s_cur, True)
+            return drupal_readonly_status(s_db, s_cur, True)
     if d_type == 'drupal':
         d_drupal_readonly = drupal_readonly_status(d_db, d_cur, None)
         if d_drupal_readonly is None:
@@ -3976,7 +4012,7 @@ def pre_action_drupal_readonly(s_db, s_cur, d_db, d_cur):
             )
             sys.exit(nori.core.exitvals['drupal']['num'])
         else:
-            drupal_readonly_status(d_db, d_cur, True)
+            return drupal_readonly_status(d_db, d_cur, True)
 
 
 def post_action_drupal_readonly(s_db, s_cur, d_db, d_cur):
@@ -3999,12 +4035,15 @@ def post_action_drupal_readonly(s_db, s_cur, d_db, d_cur):
                 "Warning: can't restore Drupal site's read-only status;\n"
                 "manual intervention is probably required."
             )
+            return False
     if d_drupal_readonly is not None:
         if not drupal_readonly_status(d_db, d_cur, d_drupal_readonly):
             nori.core.email_logger.error(
                 "Warning: can't restore Drupal site's read-only status;\n"
                 "manual intervention is probably required."
             )
+            return False
+    return True
 
 
 def clear_drupal_cache(db_obj, db_cur):
