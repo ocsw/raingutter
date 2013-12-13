@@ -1,11 +1,12 @@
 TODO
 
 configs for OCS fields
-    nfs, smb
     controllers - c manufacturer, d model
     computed fields
 
 testing
+    global callbacks
+    manufacturer, etc.
 
 ---
 
@@ -15,11 +16,15 @@ no_replicate (SET sql_log_bin=0/1; but - check/store)
 
 generic_db_insert
 
+deletes, e.g. if source is NULL and dest isn't
+
 handle non-unique field titles, fc labels, relations
     probably need to have selects pass IDs, deltas back
     for labels, will need to select by delta in the getter
     for updates, probably need to limit by delta and/or prev. value
     -> NFS/SMB
+
+separate transform and to_x functions?  compare vs store...
 
 handle interpreting drupal field defaults
 
