@@ -4736,6 +4736,7 @@ def run_mode_hook():
         )
 
     # template loop
+    global_callback_needed = False
     for t_index, template in enumerate(nori.core.cfg['templates']):
         # get settings
         t_name = template[T_NAME_IDX]
@@ -4832,7 +4833,6 @@ def run_mode_hook():
             d_rows.append((d_num_keys, d_row))
 
         # dispatch the actual diff(s)/sync(s)
-        global_callback_needed = False
         if not t_multiple:
             if do_diff_sync(t_index, s_rows, d_rows, d_db, d_cur):
                 global_callback_needed = True
