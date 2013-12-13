@@ -392,10 +392,11 @@ retrieved in sequence (i.e., two rows for the same keys may not be separated
 by a row for different keys; this typically requires an ORDER BY clause in
 SQL).
 
-In 'update' and 'insert' modes, the query functions must return a tuple of
-(number_of_full_successes, number of partial_successes, number_of_failures).
-(They will generally have to loop over the value_cv columns rather than
-doing them all at once.)
+In 'update' and 'insert' modes, the query functions must accept value_cv
+sequences with exactly one tuple, and must return True to indicate full
+success, False to indicate partial success, or None to indicate failure.
+(Programming note: the update_insert_dispatcher() function will take care of
+looping over the value_cv columns.)
 
 The transform functions, if not None, must take the following parameters:
     template: the complete template entry for this data
@@ -1143,9 +1144,121 @@ def init_reporting():
 ###########################
 
 #
-# (listed in top-down order because the docstrings in the higher-level
-# functions explain what's going on)
+# (listed mostly in top-down order because the docstrings in the
+# higher-level functions explain what's going on)
 #
+
+def update_insert_dispatcher(mode, db_obj, db_cur, dest_func, dest_args,
+                             dest_kwargs, new_key_cv, new_value_cv):
+
+    """
+    Call database query functions separately for each value_cv tuple.
+
+    The source_data tuple, dest_data tuple, and (dest_key_cv +
+    dest_value_cv) must all be the same length, and the number of keys
+    in the each data tuple must be the same as the length of
+    dest_key_cv.
+
+    Parameters:
+        mode: 'read', 'update', or 'insert'
+        db_obj: the database connection object to use
+        db_cur: the database cursor object to use
+        dest_func: the query function to use
+        dest_args: the list of positional parameters to supply to the
+                   query function, from the appropriate template
+        dest_kwargs: the list of keyword parameters to supply to the
+                     query function, from the appropriate template
+        new_key_cv: a copy of the key_cv element of dest_kwargs, with
+                    the new values inserted into the tuples
+        new_value_cv: a copy of the value_cv element of dest_kwargs,
+                      with the new values inserted into the tuples,
+                      but with only tuples needing to be updated /
+                      inserted included
+
+    Dependencies:
+        functions: (contents of dest_func)
+        modules: copy, nori
+
+    """
+
+    # log what we're doing
+    if mode == 'update':
+        nori.core.status_logger.info(
+            'Updating destination database...'
+        )
+    elif mode == 'insert':
+        nori.core.status_logger.info(
+            'Inserting into destination database...'
+        )
+
+    # call query function once for each differing column
+    fulls = 0
+    partials = 0
+    failures = 0
+    new_dest_kwargs = copy.copy(dest_kwargs)
+    new_dest_kwargs['key_cv'] = new_key_cv
+    redo_value_cv = []
+    for cv in new_value_cv:
+        new_dest_kwargs['value_cv'] = [cv]
+        ret = dest_func(*dest_args, db_obj=db_obj, db_cur=db_cur,
+                        mode=mode, **new_dest_kwargs)
+        if ret is None:
+            # eventually, there should be an option for this case:
+            # exit or continue? (currently, won't be reached)
+            failures += 1
+        elif not ret:
+            # eventually, there should be an option for this case:
+            # exit or continue?
+            nori.core.email_logger.error(
+'''Warning: {0} was only partially successful; manual intervention is
+probably required.
+    key_cv: {1}
+    value_cv: {2}''' .
+                format(mode, *map(nori.pps, [new_key_cv, new_value_cv]))
+            )
+            partials += 1
+        elif mode == 'update' and db_cur.rowcount == 0:
+            # there was no row there to update, have to insert it
+            redo_value_cv.append(cv)
+        else:
+            fulls += 1
+
+    # get and log status
+    if failures == 0 and partials == 0:  # all succeeded
+        status = True
+        nori.core.status_logger.info(mode.capitalize() + ' succeeded.')
+    elif fulls == 0 and partials == 0:  # all failed
+        status = None
+        nori.core.status_logger.info(mode.capitalize() + ' failed.')
+    else:  # some succeeded, some failed
+        status = False
+        nori.core.status_logger.info(mode.capitalize() +
+                                     ' partially succeeded.')
+
+    # handle missing rows
+    if not redo_value_cv:
+        return status
+    nori.core.status_logger.info(
+        'However, some rows were missing and could not be updated;\n'
+        'inserting them now.'
+    )
+    redo_status = update_insert_dispatcher(
+        'insert', db_obj, db_cur, dest_func, dest_args, dest_kwargs,
+        new_key_cv, redo_value_cv
+    )
+    if redo_status is None:
+        if status is None:
+            return None
+        else:
+            return False
+    elif not redo_status:
+        return False
+    else:
+        if status:
+            return True
+        else:
+            return False
+
 
 def generic_db_query(db_obj, db_cur, mode, tables, key_cv, value_cv,
                      where_str=None, more_str=None, more_args=[],
@@ -1172,9 +1285,9 @@ def generic_db_query(db_obj, db_cur, mode, tables, key_cv, value_cv,
                       transform function; see the description of the
                       'templates' config setting, above
                     * a value of None indicates a SQL NULL
-        value_cv: same as key_cv, but for the 'value' columns; the
-                  third elements of the tuples are only used in 'update'
-                  mode
+        value_cv: same as key_cv, but for the 'value' columns
+                  * in 'update' and 'insert' modes, the value_cv
+                    sequence must contain exactly one tuple
         where_str: if not None, a string to include in the WHERE clause
                    of the query (don't include the WHERE keyword)
         more_str: if not None, a string to add to the query; useful for
@@ -1220,46 +1333,12 @@ Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, mode, tables, key_cv,
                                where_str, more_str, more_args)
 
     if mode == 'update':
-        successes = 0
-        failures = 0
-        for i, cv in enumerate(value_cv):
-            up_ret = generic_db_update(db_obj, db_cur, tables, key_cv,
-                                       [value_cv[i]], where_str,
-                                       no_replicate)
-            if not up_ret:
-                # eventually, there should be an option for this case:
-                # exit or continue? (currently, won't be reached)
-                failures += 1
-            elif db_cur.rowcount == 0:
-                # there was no row there to update, have to insert it
-                in_ret = generic_db_insert(db_obj, db_cur, tables, key_cv,
-                                           [value_cv[i]], where_str,
-                                           no_replicate)
-                if not in_ret:
-                    # eventually, there should be an option for this
-                    # case: exit or continue? (currently, won't be
-                    # reached)
-                    failures += 1
-                else:
-                    successes += 1
-            else:
-                successes += 1
-        return (successes, 0, failures)
+        return generic_db_update(db_obj, db_cur, tables, key_cv, value_cv,
+                                 where_str, no_replicate)
 
     if mode == 'insert':
-        successes = 0
-        failures = 0
-        for i, cv in enumerate(value_cv):
-            in_ret = generic_db_insert(db_obj, db_cur, tables, key_cv,
-                                       [value_cv[i]], where_str,
-                                       no_replicate)
-            if not in_ret:
-                # eventually, there should be an option for this case:
-                # exit or continue? (currently, won't be reached)
-                failures += 1
-            else:
-                successes += 1
-        return (successes, 0, failures)
+        return generic_db_insert(db_obj, db_cur, tables, key_cv, value_cv,
+                                 where_str, no_replicate)
 
 
 def generic_db_read(db_obj, db_cur, tables, key_cv, value_cv,
@@ -1368,8 +1447,9 @@ Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, tables, key_cv, value_cv,
     query_str += 'WHERE ' + '\nAND\n'.join(where_parts) + '\n'
 
     # execute the query
-    return db_obj.execute(db_cur, query_str.split(), query_args,
-                          has_results=False)
+    ret = db_obj.execute(db_cur, query_str.split(), query_args,
+                         has_results=False)
+    return None if not ret else True
 
 
 def generic_db_insert(db_obj, db_cur, tables, key_cv, value_cv,
@@ -1431,8 +1511,9 @@ Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, tables, key_cv, value_cv,
 #    query_str += 'WHERE ' + '\nAND\n'.join(where_parts) + '\n'
 
     # execute the query
-    return db_obj.execute(db_cur, query_str.split(), query_args,
-                          has_results=False)
+    ret = db_obj.execute(db_cur, query_str.split(), query_args,
+                         has_results=False)
+    return None if not ret else True
 
 
 def drupal_db_query(db_obj, db_cur, mode, key_cv, value_cv,
@@ -1553,8 +1634,9 @@ def drupal_db_query(db_obj, db_cur, mode, key_cv, value_cv,
                 'key' fields, their associated data types, and
                 (optionally) values to require for them (see above)
         value_cv: same as key_cv, but for the 'value' fields (see
-                  above); the third elements of the tuples are only used
-                  in 'update' mode
+                  above)
+                  * in 'update' and 'insert' modes, the value_cv
+                    sequence must contain exactly one tuple
         no_replicate: if True, attempt to turn off replication during
                       the query; failure will cause a warning, but won't
                       prevent the query from proceeding
@@ -1586,55 +1668,12 @@ Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, mode, key_cv, value_cv,
         return drupal_db_read(db_obj, db_cur, key_cv, value_cv)
 
     if mode == 'update':
-        successes = 0
-        failures = 0
-        for i, cv in enumerate(value_cv):
-            up_ret = drupal_db_update(db_obj, db_cur, key_cv, [value_cv[i]],
-                                      no_replicate)
-            if not up_ret:
-                # eventually, there should be an option for this case:
-                # exit or continue? (currently, won't be reached)
-                failures += 1
-            elif db_cur.rowcount == 0:
-                # there was no row there to update, have to insert it
-                in_ret = drupal_db_insert(db_obj, db_cur, key_cv,
-                                          [value_cv[i]], no_replicate)
-                if not in_ret:
-                    # eventually, there should be an option for this
-                    # case: exit or continue? (currently, won't be
-                    # reached)
-                    failures += 1
-                else:
-                    successes += 1
-            else:
-                successes += 1
-        return (successes, 0, failures)
+        return drupal_db_update(db_obj, db_cur, key_cv, value_cv,
+                                no_replicate)
 
     if mode == 'insert':
-        fulls = 0
-        partials = 0
-        failures = 0
-        for i, cv in enumerate(value_cv):
-            in_ret = drupal_db_insert(db_obj, db_cur, key_cv, [value_cv[i]],
-                                      no_replicate)
-            if in_ret is None:
-                # eventually, there should be an option for this case:
-                # exit or continue? (currently, won't be reached)
-                failures += 1
-            elif not in_ret:
-                # eventually, there should be an option for this case:
-                # exit or continue?
-                nori.core.email_logger.error(
-'''Warning: insert was only partially successful; manual intervention is
-probably required.
-    key_cv: {0}
-    value_cv: {1}''' .
-                    format(*map(nori.pps, [key_cv, value_cv]))
-                )
-                partials += 1
-            else:
-                fulls += 1
-        return (fulls, partials, failures)
+        return drupal_db_insert(db_obj, db_cur, key_cv, value_cv,
+                                no_replicate)
 
 
 def drupal_db_read(db_obj, db_cur, key_cv, value_cv):
@@ -2648,8 +2687,9 @@ AND (f.deleted = 0 OR f.deleted IS NULL)
 
     ######################## execute the query ########################
 
-    return db_obj.execute(db_cur, query_str.strip(), query_args,
-                          has_results=False)
+    ret = db_obj.execute(db_cur, query_str.strip(), query_args,
+                         has_results=False)
+    return None if not ret else True
 
 
 def drupal_db_insert(db_obj, db_cur, key_cv, value_cv, no_replicate=False):
@@ -4164,14 +4204,20 @@ def key_filter(template_index, num_keys, row):
     return True
 
 
-def key_value_copy(source_data, dest_key_cv, dest_value_cv):
+def key_value_copy(source_data, dest_data, dest_key_cv, dest_value_cv):
     """
     Transfer the values from a source DB row to the dest DB k/v seqs.
-    The source_data tuple and (dest_key_cv + dest_value_cv) must be the
-    same length.
-    Returns a tuple of (key_cv, value_cv).
+    Returns a tuple of (key_cv, value_cv), where the value_cv sequence
+    contains elements for data that differs between the source and
+    destination.
+    The source_data tuple, dest_data tuple, and (dest_key_cv +
+    dest_value_cv) must all be the same length, and the number of keys
+    in the each data tuple must be the same as the length of
+    dest_key_cv.
     Parameters:
         source_data: a row tuple from the source database results, as
+                     modified by the transform function
+        dest_data: a row tuple from the destination database results, as
                      modified by the transform function
         dest_key_cv: the key cv sequence from the template for the
                      destination database
@@ -4187,10 +4233,11 @@ def key_value_copy(source_data, dest_key_cv, dest_value_cv):
                 (dest_key_cv[i][0], dest_key_cv[i][1], data_val)
             )
         else:
-            new_dest_value_cv.append(
-                (dest_value_cv[i - num_keys][0],
-                 dest_value_cv[i - num_keys][1], data_val)
-            )
+            if data_val != dest_data[i]:
+                new_dest_value_cv.append(
+                    (dest_value_cv[i - num_keys][0],
+                     dest_value_cv[i - num_keys][1], data_val)
+                )
     return (new_dest_key_cv, new_dest_value_cv)
 
 
@@ -4411,7 +4458,7 @@ def do_diff_report():
 # the 'reverse' setting
 #
 
-def do_sync(t_index, s_row, d_db, d_cur, diff_k, diff_i):
+def do_sync(t_index, s_row, d_row, d_db, d_cur, diff_k, diff_i):
 
     """
     Actually sync data to the destination database.
@@ -4424,6 +4471,8 @@ def do_sync(t_index, s_row, d_db, d_cur, diff_k, diff_i):
                  setting
         s_row: a tuple of (number of keys, transformed source data
                tuple)
+        d_row: a tuple of (number of keys, transformed destination data
+               tuple)
         d_db: the connection object for the destination database
         d_cur: the cursor object for the destination database
         diff_k: the key of the diff list within diff_dict
@@ -4434,8 +4483,9 @@ def do_sync(t_index, s_row, d_db, d_cur, diff_k, diff_i):
         config settings: reverse, templates
         globals: (some of) T_*
         functions: generic_db_query(), drupal_db_query(),
-                   key_value_copy(), update_diff()
-        modules: copy, nori
+                   key_value_copy(), update_insert_dispatcher(),
+                   update_diff(), (template's dest_change_func)
+        modules: nori
         Python: 2.0/3.2, for callable()
 
     """
@@ -4464,37 +4514,17 @@ def do_sync(t_index, s_row, d_db, d_cur, diff_k, diff_i):
         elif dest_type == 'drupal':
             dest_func = drupal_db_query
 
-    # set up the new cv sequences
+    # get the new cv sequences
     new_key_cv, new_value_cv = key_value_copy(
-        s_row[1], dest_kwargs['key_cv'], dest_kwargs['value_cv']
+        s_row[1], d_row[1], dest_kwargs['key_cv'], dest_kwargs['value_cv']
     )
-    new_dest_kwargs = copy.copy(dest_kwargs)
-    new_dest_kwargs['key_cv'] = new_key_cv
-    new_dest_kwargs['value_cv'] = new_value_cv
 
-    # do the update / insert
-    if t_multiple:
-        nori.core.status_logger.info(
-            'Inserting into destination database...'
-        )
-    else:
-        nori.core.status_logger.info(
-            'Updating destination database...'
-        )
+    # do the updates / inserts
     global_callback_needed = False
-    fulls, partials, failures = dest_func(
-        *dest_args, db_obj=d_db, db_cur=d_cur, mode=mode, **new_dest_kwargs
+    status = update_insert_dispatcher(
+        mode, d_db, d_cur, dest_func, dest_args, dest_kwargs, new_key_cv,
+        new_value_cv
     )
-    if failures == 0 and partials == 0:  # all succeeded
-        status = True
-        nori.core.status_logger.info(mode.capitalize() + ' succeeded.')
-    elif fulls == 0 and partials == 0:  # all failed
-        status = None
-        nori.core.status_logger.info(mode.capitalize() + ' failed.')
-    else:  # some succeeded, some failed
-        status = False
-        nori.core.status_logger.info(mode.capitalize() +
-                                     ' partially succeeded.')
     if status is not None:
         global_callback_needed = True
         update_diff(diff_k, diff_i, status)
@@ -4573,8 +4603,8 @@ def do_diff_sync(t_index, s_rows, d_rows, d_db, d_cur):
                         diff_k, diff_i = log_diff(t_index, True, s_row,
                                                   True, d_row)
                         if nori.core.cfg['action'] == 'sync':
-                            if do_sync(t_index, s_row, d_db, d_cur, diff_k,
-                                       diff_i):
+                            if do_sync(t_index, s_row, d_row, d_db, d_cur,
+                                       diff_k, diff_i):
                                 global_callback_needed = True
                     break
             else:  # multiple-row matching
@@ -4588,7 +4618,8 @@ def do_diff_sync(t_index, s_rows, d_rows, d_db, d_cur):
         if not s_found:
             log_diff(t_index, True, s_row, False, None)
             if t_multiple:
-                if do_sync(t_index, s_row, d_db, d_cur, diff_k, diff_i):
+                if do_sync(t_index, s_row, d_row, d_db, d_cur, diff_k,
+                           diff_i):
                     global_callback_needed = True
 
     # check for missing rows in the source DB
