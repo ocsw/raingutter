@@ -1496,19 +1496,14 @@ Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, tables, key_cv, value_cv,
 #        query_str += tables
 #    query_str += '\n'
 #    set_parts = []
-#    for cv in value_cv:
-#        if len(cv) > 2:
-#            set_parts.append('{0} = %s'.format(cv[0]))
-#            query_args.append(cv[2])
 #    query_str += 'SET ' + ', '.join(set_parts) + '\n'
-#    where_parts = []
-#    if where_str:
-#        where_parts.append('(' + where_str + ')')
 #    for cv in key_cv:
 #        if len(cv) > 2:
 #            where_parts.append('({0} = %s)'.format(cv[0]))
 #            query_args.append(cv[2])
-#    query_str += 'WHERE ' + '\nAND\n'.join(where_parts) + '\n'
+#    for cv in value_cv:
+#        set_parts.append('{0} = %s'.format(cv[0]))
+#        query_args.append(cv[2])
 
     # execute the query
     ret = db_obj.execute(db_cur, query_str.split(), query_args,
