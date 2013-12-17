@@ -2007,7 +2007,7 @@ ORDER BY k_node.title, k_node.nid, e1.entity_id, v_node.title, v_node.nid
                 value_columns.append('t{0}.name'.format(i))
                 term_joins.append(
                     'LEFT JOIN taxonomy_term_data AS t{0}\n'
-                    'ON t{0}.tid = f{0}.field_{1}_tid}' .
+                    'ON t{0}.tid = f{0}.field_{1}_tid' .
                     format(i, field_names[i])
                 )
             elif field_value_types[i] == 'ip':
@@ -2175,7 +2175,7 @@ ORDER BY k_node.title, k_node.nid, e1.entity_id, {10}
                 value_columns.append('t{0}.name'.format(i))
                 term_joins.append(
                     'LEFT JOIN taxonomy_term_data AS t{0}\n'
-                    'ON t{0}.tid = f{0}.field_{1}_tid}' .
+                    'ON t{0}.tid = f{0}.field_{1}_tid' .
                     format(i, field_names[i])
                 )
             elif field_value_types[i] == 'ip':
