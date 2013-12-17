@@ -1261,8 +1261,8 @@ probably required.
 
 
 def generic_db_query(db_obj, db_cur, mode, tables, key_cv, value_cv,
-                     where_str=None, more_str=None, more_args=[],
-                     no_replicate=False):
+                     where_str=None, where_args=[], more_str=None,
+                     more_args=[], no_replicate=False):
 
     """
     Generic 'DB query function' for use in templates.
@@ -1290,6 +1290,9 @@ def generic_db_query(db_obj, db_cur, mode, tables, key_cv, value_cv,
                     sequence must contain exactly one tuple
         where_str: if not None, a string to include in the WHERE clause
                    of the query (don't include the WHERE keyword)
+        where_args: a list of values to supply along with the database
+                   query for interpolation into the query string; only
+                   needed if there are placeholders in where_str
         more_str: if not None, a string to add to the query; useful for
                   ORDER and GROUP BY clauses
         more_args: a list of values to supply along with the database
@@ -1318,31 +1321,33 @@ generic_db_query(db_obj={0},
                  key_cv={4},
                  value_cv={5},
                  where_str={6},
-                 more_str={7},
-                 more_args={8},
-                 no_replicate={9})
+                 where_args={7},
+                 more_str={8},
+                 more_args={9},
+                 no_replicate={10})
 
 Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, mode, tables, key_cv,
-                                   value_cv, where_str, more_str, more_args,
-                                   no_replicate]))
+                                   value_cv, where_str, where_args,
+                                   more_str, more_args, no_replicate]))
         )
         sys.exit(nori.core.exitvals['internal']['num'])
 
     if mode == 'read':
         return generic_db_read(db_obj, db_cur, tables, key_cv, value_cv,
-                               where_str, more_str, more_args)
+                               where_str, where_args, more_str, more_args)
 
     if mode == 'update':
         return generic_db_update(db_obj, db_cur, tables, key_cv, value_cv,
-                                 where_str, no_replicate)
+                                 where_str, where_args, no_replicate)
 
     if mode == 'insert':
         return generic_db_insert(db_obj, db_cur, tables, key_cv, value_cv,
-                                 where_str, no_replicate)
+                                 where_str, where_args, no_replicate)
 
 
 def generic_db_read(db_obj, db_cur, tables, key_cv, value_cv,
-                    where_str=None, more_str=None, more_args=[]):
+                    where_str=None, where_args=[], more_str=None,
+                    more_args=[]):
 
     """
     Do the actual work for generic DB reads.
@@ -1370,6 +1375,7 @@ def generic_db_read(db_obj, db_cur, tables, key_cv, value_cv,
     where_parts = []
     if where_str:
         where_parts.append('(' + where_str + ')')
+        query_args += where_args
     for cv in key_cv:
         if len(cv) > 2:
             where_parts.append('({0} = %s)'.format(cv[0]))
@@ -1393,7 +1399,7 @@ def generic_db_read(db_obj, db_cur, tables, key_cv, value_cv,
 
 
 def generic_db_update(db_obj, db_cur, tables, key_cv, value_cv,
-                      where_str=None, no_replicate=False):
+                      where_str=None, where_args=[], no_replicate=False):
 
     """
     Do the actual work for generic DB updates.
@@ -1420,10 +1426,11 @@ generic_db_update(db_obj={0},
                  key_cv={3},
                  value_cv={4},
                  where_str={5},
-                 no_replicate={6})
+                 where_args={6},
+                 no_replicate={7})
 
 Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, tables, key_cv, value_cv,
-                                   where_str, no_replicate]))
+                                   where_str, where_args, no_replicate]))
         )
         sys.exit(nori.core.exitvals['internal']['num'])
 
@@ -1440,6 +1447,7 @@ Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, tables, key_cv, value_cv,
     where_parts = []
     if where_str:
         where_parts.append('(' + where_str + ')')
+        query_args += where_args
     for cv in key_cv:
         if len(cv) > 2:
             where_parts.append('({0} = %s)'.format(cv[0]))
@@ -1453,7 +1461,7 @@ Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, tables, key_cv, value_cv,
 
 
 def generic_db_insert(db_obj, db_cur, tables, key_cv, value_cv,
-                      where_str=None, no_replicate=False):
+                      where_str=None, where_args=[], no_replicate=False):
 
     """
     Do the actual work for generic DB inserts.
@@ -1480,10 +1488,11 @@ generic_db_update(db_obj={0},
                  key_cv={3},
                  value_cv={4},
                  where_str={5},
-                 no_replicate={6})
+                 where_args={6},
+                 no_replicate={7})
 
 Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, tables, key_cv, value_cv,
-                                   where_str, no_replicate]))
+                                   where_str, where_args, no_replicate]))
         )
         sys.exit(nori.core.exitvals['internal']['num'])
 
