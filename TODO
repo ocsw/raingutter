@@ -4,6 +4,10 @@ configs for OCS fields
     controllers - c manufacturer, d model
     computed fields
 
+software: ssh, ssl, bind, postfix, wowza, adobe
+ip aliases
+more IS NULL?
+
 testing
 
 ---
