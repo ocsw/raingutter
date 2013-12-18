@@ -4626,10 +4626,11 @@ def do_diff_sync(t_index, s_rows, d_rows, d_db, d_cur):
 
         # row not found
         if not s_found:
-            log_diff(t_index, True, s_row, False, None)
-            if t_multiple:
-                if do_sync(t_index, s_row, d_row, d_db, d_cur, diff_k,
-                           diff_i):
+            diff_k, diff_i = log_diff(t_index, True, s_row, False, None)
+            if nori.core.cfg['action'] == 'sync':
+                if do_sync(t_index, s_row,
+                           (s_row[0], [None for x in s_row[1]]), d_db,
+                           d_cur, diff_k, diff_i):
                     global_callback_needed = True
 
     # check for missing rows in the source DB
@@ -4873,8 +4874,9 @@ def run_mode_hook():
                         global_callback_needed = True
                 else:
                     # not even a key match
-                    for s_row in s_row_groups[s_keys]:
-                        log_diff(t_index, True, s_row, None, None)
+                    if do_diff_sync(t_index, s_row_groups[s_keys], [], d_db,
+                                    d_cur):
+                        global_callback_needed = True
             if nori.core.cfg['bidir']:
                 for d_keys in d_row_groups:
                     if d_keys not in d_keys_found:
