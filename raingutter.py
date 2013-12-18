@@ -3096,7 +3096,8 @@ Skipping insert.''' .
 
         # insert the field entry
         ret = insert_drupal_field(db_obj, db_cur, 'field_collection_item',
-                                  fc_type, fc_id, fc_vid, field_cv)
+                                  ('field_' + fc_type), fc_id, fc_vid,
+                                  field_cv)
         if ret is None:
             return None
         if (not ret) or partial:
@@ -3269,12 +3270,12 @@ SELECT fci.item_id, fci.revision_id
 FROM field_data_field_{0} as fcf
 LEFT JOIN field_collection_item as fci
 ON fci.item_id = fcf.field_{0}_value
-AND fci.revision_id = fcf.field_{0}_revision
+AND fci.revision_id = fcf.field_{0}_revision_id
 WHERE fcf.entity_type = %s
 AND fcf.bundle = %s
 AND fcf.entity_id = %s
 AND fcf.revision_id = %s
-(fcf.deleted = 0 OR fcf.deleted IS NULL)
+AND (fcf.deleted = 0 OR fcf.deleted IS NULL)
 AND (fci.revision_id IN
      (SELECT MAX(revision_id)
       FROM field_collection_item
@@ -3827,7 +3828,7 @@ WHERE item_id = %s
 
 
 def insert_drupal_field(db_obj, db_cur, entity_type, bundle, entity_id,
-                        revision_id, field_cv, extra_data=[],
+                        revision_id, field_cv, extra_data=None,
                         no_trans=False):
 
     """
@@ -3856,6 +3857,11 @@ def insert_drupal_field(db_obj, db_cur, entity_type, bundle, entity_id,
         modules: operator, nori
 
     """
+
+    # we need to be able to modify extra_data without affecting later
+    # defaults; see, e.g., http://effbot.org/zone/default-values.htm
+    if extra_data is None:
+        extra_data = []
 
     # field details
     field_ident = field_cv[0]
