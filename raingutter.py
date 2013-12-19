@@ -4737,7 +4737,7 @@ def run_mode_hook():
     Do the actual work.
 
     Dependencies:
-        config settings: reverse, bidir, pre_action_callbacks,
+        config settings: debug, reverse, bidir, pre_action_callbacks,
                          post_action_callbacks, templates, template_mode,
                          template_list, sourcedb_change_callback,
                          sourcedb_change_callback_args,
@@ -4869,6 +4869,7 @@ def run_mode_hook():
 
             # add to the list
             s_rows.append((s_num_keys, s_row))
+        nori.core.status_logger_debug('Final source rows:\n' + s_rows)
 
         # get the destination data
         d_rows_raw = dest_func(*dest_args, db_obj=d_db, db_cur=d_cur,
@@ -4895,6 +4896,7 @@ def run_mode_hook():
 
             # add to the list
             d_rows.append((d_num_keys, d_row))
+        nori.core.status_logger_debug('Final destination rows:\n' + d_rows)
 
         # dispatch the actual diff(s)/sync(s)
         if not t_multiple:
