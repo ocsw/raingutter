@@ -1,11 +1,12 @@
 TODO
 
 configs for OCS fields
-    controllers - c manufacturer, d model
-    computed fields
+    controllers - raid (c manufacturer, d model), telephony
+    computed fields, autolabels
+    software: ssh, ssl, bind, postfix, wowza, adobe
+    crontabs
+    ip aliases
 
-software: ssh, ssl, bind, postfix, wowza, adobe
-ip aliases
 more IS NULL?
 
 testing
