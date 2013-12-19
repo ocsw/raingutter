@@ -4009,7 +4009,20 @@ WHERE name='site_readonly'
         if not ret[0]:
             return None
         if not ret[1]:
-            return None
+            # doesn't exist because it's never been used; have to insert
+            query_str = (
+'''
+INSERT INTO variable
+(name, value)
+VALUES
+(%s, %s)
+'''
+            )
+            query_args = ['site_readonly', 'i:0;']
+            if not db_obj.execute(db_cur, query_str.strip(), query_args,
+                                  has_results=False):
+                return None
+            return False
         return (ret[1][0][0] == 'i:1;')
     else:
         query_str = (
