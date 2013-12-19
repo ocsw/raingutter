@@ -1804,10 +1804,10 @@ SELECT {0}, {1}
 FROM node
 {2}
 {3}
-WHERE (node.vid IN
-       (SELECT MAX(vid)
-        FROM node
-        GROUP BY nid))
+WHERE node.vid IN
+      (SELECT MAX(vid)
+       FROM node
+       GROUP BY nid)
 AND node.type = %s
 {4}
 {5}
@@ -1897,26 +1897,26 @@ LEFT JOIN field_data_endpoints AS e2
           AND e2.endpoints_r_index > e1.endpoints_r_index
 LEFT JOIN node AS v_node
           ON v_node.nid = e2.endpoints_entity_id
-WHERE (k_node.vid IN
-       (SELECT MAX(vid)
-        FROM node
-        GROUP BY nid))
+WHERE k_node.vid IN
+      (SELECT MAX(vid)
+       FROM node
+       GROUP BY nid)
 AND k_node.type = %s
 {3}
-AND (e1.revision_id IN
-     (SELECT MAX(revision_id)
-      FROM field_data_endpoints
-      GROUP BY entity_id))
+AND e1.revision_id IN
+    (SELECT MAX(revision_id)
+     FROM field_data_endpoints
+     GROUP BY entity_id)
 AND e1.entity_type = 'relation'
 AND e1.bundle = %s
 AND e1.endpoints_entity_type = 'node'
-AND (e1.deleted = 0 OR e1.deleted IS NULL)
+AND e1.deleted = 0
 AND e2.endpoints_entity_type = 'node'
-AND (e2.deleted = 0 OR e2.deleted IS NULL)
-AND (v_node.vid IN
-     (SELECT MAX(vid)
-      FROM node
-      GROUP BY nid))
+AND e2.deleted = 0 OR e2.deleted
+AND v_node.vid IN
+    (SELECT MAX(vid)
+     FROM node
+     GROUP BY nid)
 {4}
 {5}
 ORDER BY k_node.title, k_node.nid, e1.entity_id, v_node.title, v_node.nid
@@ -2030,7 +2030,8 @@ ORDER BY k_node.title, k_node.nid, e1.entity_id, v_node.title, v_node.nid
 
             # field entity type
             field_entity_conds.append(
-                "AND f{0}.entity_type = 'relation'".format(i)
+                "AND (f{0}.entity_type = 'relation'"
+                " OR f{0}.entity_type IS NULL)".format(i)
             )
 
             # handle specified field value
@@ -2062,26 +2063,26 @@ LEFT JOIN node AS node2
           ON node2.nid = e2.endpoints_entity_id
 {3}
 {4}
-WHERE (node1.vid IN
-       (SELECT MAX(vid)
-        FROM node
-        GROUP BY nid))
+WHERE node1.vid IN
+      (SELECT MAX(vid)
+       FROM node
+       GROUP BY nid)
 AND node1.type = %s
 {5}
-AND (e1.revision_id IN
-     (SELECT MAX(revision_id)
-      FROM field_data_endpoints
-      GROUP BY entity_id))
+AND e1.revision_id IN
+    (SELECT MAX(revision_id)
+     FROM field_data_endpoints
+     GROUP BY entity_id)
 AND e1.entity_type = 'relation'
 AND e1.bundle = %s
 AND e1.endpoints_entity_type = 'node'
-AND (e1.deleted = 0 OR e1.deleted IS NULL)
+AND e1.deleted = 0
 AND e2.endpoints_entity_type = 'node'
-AND (e2.deleted = 0 OR e2.deleted IS NULL)
-AND (node2.vid IN
-     (SELECT MAX(vid)
-      FROM node
-      GROUP BY nid))
+AND e2.deleted = 0
+AND node2.vid IN
+    (SELECT MAX(vid)
+     FROM node
+     GROUP BY nid)
 AND node2.type = %s
 {6}
 {7}
@@ -2198,7 +2199,8 @@ ORDER BY k_node.title, k_node.nid, e1.entity_id, {10}
 
             # field entity type
             field_entity_conds.append(
-                "AND f{0}.entity_type = 'field_collection_item'".format(i)
+                "AND (f{0}.entity_type = 'field_collection_item'"
+                " OR f{0}.entity_type IS NULL)".format(i)
             )
 
             # handle specified field value
@@ -2228,19 +2230,19 @@ LEFT JOIN field_collection_item as fci
           AND fci.revision_id = fcf.field_{3}_revision_id
 {4}
 {5}
-WHERE (node.vid IN
-       (SELECT MAX(vid)
-        FROM node
-        GROUP BY nid))
+WHERE node.vid IN
+      (SELECT MAX(vid)
+       FROM node
+       GROUP BY nid)
 AND node.type = %s
 {6}
 AND fcf.entity_type = 'node'
-AND (fcf.deleted = 0 OR fcf.deleted IS NULL)
-AND (fci.revision_id IN
-     (SELECT MAX(revision_id)
-      FROM field_collection_item
-      GROUP BY item_id))
-AND (fci.archived = 0 OR fci.archived IS NULL)
+AND fcf.deleted = 0
+AND fci.revision_id IN
+    (SELECT MAX(revision_id)
+     FROM field_collection_item
+     GROUP BY item_id)
+AND fci.archived = 0
 {7}
 {8}
 {9}
@@ -2331,7 +2333,11 @@ Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, key_cv, value_cv,
         )
         sys.exit(nori.core.exitvals['internal']['num'])
 
-    ########### assemble the query string and argument list ###########
+    # prepare for a transaction
+    db_ac = db_obj.autocommit(None)
+    db_obj.autocommit(False)
+
+    ########## assemble the query strings and argument lists ##########
 
     #
     # node -> field (including term references)
@@ -2375,30 +2381,36 @@ Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, key_cv, value_cv,
             value_column = 'f.field_{0}_value'.format(field_name)
             value_str = '%s'
 
-        # query string and arguments
-        query_str = (
+        # query strings and arguments
+        query_str_raw = (
 '''
 UPDATE node
-LEFT JOIN field_data_field_{0} AS f
+LEFT JOIN field_{0}_field_{1} AS f
 ON f.entity_id = node.nid
 AND f.revision_id = node.vid
-{1}
-SET {2} = {3}
-WHERE (node.vid IN
-       (SELECT MAX(vid)
-        FROM node
-        GROUP BY nid))
+{2}
+SET {3} = {4}
+WHERE node.vid IN
+      (SELECT MAX(vid)
+       FROM node
+       GROUP BY nid)
 AND node.type = %s
-AND {4} = %s
+AND {5} = %s
 AND (f.deleted = 0 OR f.deleted IS NULL)
-''' .
-            format(field_name,
-                   term_join,
-                   value_column,
-                   value_str,
-                   key_column)
+'''
         )
-        query_args = [field_value, node_type, node_value]
+        query_str = {}
+        query_args = {}
+        for dr_str in ['data', 'revision']:
+            query_str[dr_str] = query_str_raw.format(
+                dr_str,
+                field_name,
+                term_join,
+                value_column,
+                value_str,
+                key_column
+            )
+            query_args[dr_str] = [field_value, node_type, node_value]
 
     #
     # node -> relation -> node
@@ -2437,46 +2449,52 @@ AND (f.deleted = 0 OR f.deleted IS NULL)
         elif v_node_id_type == 'title':
             value_column = 'v_node.title'
 
-        # query string and arguments
-        query_str = (
+        # query strings and arguments
+        query_str_raw = (
 '''
 UPDATE node AS k_node
 LEFT JOIN field_data_endpoints AS e1
           ON e1.endpoints_entity_id = k_node.nid
-LEFT JOIN field_data_endpoints AS e2
+LEFT JOIN field_{0}_endpoints AS e2
           ON e2.entity_id = e1.entity_id
           AND e2.revision_id = e1.revision_id
           AND e2.endpoints_r_index > e1.endpoints_r_index
 LEFT JOIN node AS v_node
 SET e2.endpoints_entity_id = v_node.nid
-WHERE (k_node.vid IN
-       (SELECT MAX(vid)
-        FROM node
-        GROUP BY nid))
+WHERE k_node.vid IN
+      (SELECT MAX(vid)
+       FROM node
+       GROUP BY nid)
 AND k_node.type = %s
-AND {0} = %s
-AND (e1.revision_id IN
-     (SELECT MAX(revision_id)
-      FROM field_data_endpoints
-      GROUP BY entity_id))
+AND {1} = %s
+AND e1.revision_id IN
+    (SELECT MAX(revision_id)
+     FROM field_data_endpoints
+     GROUP BY entity_id)
 AND e1.entity_type = 'relation'
 AND e1.bundle = %s
 AND e1.endpoints_entity_type = 'node'
-AND (e1.deleted = 0 OR e1.deleted IS NULL)
+AND e1.deleted = 0
 AND e2.endpoints_entity_type = 'node'
-AND (e2.deleted = 0 OR e2.deleted IS NULL)
-AND (v_node.vid IN
-     (SELECT MAX(vid)
-      FROM node
-      GROUP BY nid))
+AND e2.deleted = 0
+AND v_node.vid IN
+    (SELECT MAX(vid)
+     FROM node
+     GROUP BY nid)
 AND v_node.type = %s
-AND {1} = %s
-''' .
-            format(key_column,
-                   value_column)
+AND {2} = %s
+'''
         )
-        query_args = [k_node_type, k_node_value, rel_type, v_node_type,
-                      v_node_value]
+        query_str = {}
+        query_args = {}
+        for dr_str in ['data', 'revision']:
+            query_str[dr_str] = query_str_raw.format(
+                dr_str,
+                key_column,
+                value_column
+            )
+            query_args[dr_str] = [k_node_type, k_node_value, rel_type,
+                                  v_node_type, v_node_value]
 
     #
     # node -> relation & node -> relation_field (incl. term refs)
@@ -2539,8 +2557,8 @@ AND {1} = %s
             value_column = 'f.field_{0}_value'.format(field_name)
             value_str = '%s'
 
-        # query string and arguments
-        query_str = (
+        # query strings and arguments
+        query_str_raw = (
 '''
 UPDATE node AS node1
 LEFT JOIN field_data_endpoints AS e1
@@ -2551,45 +2569,51 @@ LEFT JOIN field_data_endpoints AS e2
           AND e2.endpoints_r_index > e1.endpoints_r_index
 LEFT JOIN node AS node2
           ON node2.nid = e2.endpoints_entity_id
-LEFT JOIN field_data_field_{0} AS f
+LEFT JOIN field_{0}_field_{1} AS f
 ON f.entity_id = e2.entity_id
 AND f.revision_id = e2.revision_id
-{1}
-SET {2} = {3}
-WHERE (node1.vid IN
-       (SELECT MAX(vid)
-        FROM node
-        GROUP BY nid))
+{2}
+SET {3} = {4}
+WHERE node1.vid IN
+      (SELECT MAX(vid)
+       FROM node
+       GROUP BY nid)
 AND node1.type = %s
-AND {4} = %s
-AND (e1.revision_id IN
-     (SELECT MAX(revision_id)
-      FROM field_data_endpoints
-      GROUP BY entity_id))
+AND {5} = %s
+AND e1.revision_id IN
+    (SELECT MAX(revision_id)
+     FROM field_data_endpoints
+     GROUP BY entity_id)
 AND e1.entity_type = 'relation'
 AND e1.bundle = %s
 AND e1.endpoints_entity_type = 'node'
-AND (e1.deleted = 0 OR e1.deleted IS NULL)
+AND e1.deleted = 0
 AND e2.endpoints_entity_type = 'node'
-AND (e2.deleted = 0 OR e2.deleted IS NULL)
-AND (node2.vid IN
-     (SELECT MAX(vid)
-      FROM node
-      GROUP BY nid))
+AND e2.deleted = 0
+AND node2.vid IN
+    (SELECT MAX(vid)
+     FROM node
+     GROUP BY nid)
 AND node2.type = %s
-AND {5} = %s
-AND f.entity_type = 'relation'
+AND {6} = %s
+AND (f.entity_type = 'relation' OR f.entity_type IS NULL)
 AND (f.deleted = 0 OR f.deleted IS NULL)
-''' .
-            format(field_name,
-                   term_join,
-                   value_column,
-                   value_str,
-                   key_column_1,
-                   key_column_2)
+'''
         )
-        query_args = [field_value, node1_type, node1_value, rel_type,
-                      node2_type, node2_value]
+        query_str = {}
+        query_args = {}
+        for dr_str in ['data', 'revision']:
+            query_str[dr_str] = query_str_raw.format(
+                dr_str,
+                field_name,
+                term_join,
+                value_column,
+                value_str,
+                key_column_1,
+                key_column_2
+            )
+            query_args[dr_str] = [field_value, node1_type, node1_value,
+                                  rel_type, node2_type, node2_value]
 
     #
     # node -> fc -> field (including term references)
@@ -2647,8 +2671,8 @@ AND (f.deleted = 0 OR f.deleted IS NULL)
             value_column = 'f.field_{0}_value'.format(field_name)
             value_str = '%s'
 
-        # query string and arguments
-        query_str = (
+        # query strings and arguments
+        query_str_raw = (
 '''
 UPDATE node
 LEFT JOIN field_data_field_{0} AS fcf
@@ -2657,42 +2681,58 @@ LEFT JOIN field_data_field_{0} AS fcf
 LEFT JOIN field_collection_item as fci
           ON fci.item_id = fcf.field_{0}_value
           AND fci.revision_id = fcf.field_{0}_revision_id
-LEFT JOIN field_data_field_{1} AS f
+LEFT JOIN field_{1}_field_{2} AS f
 ON f.entity_id = fci.item_id
 AND f.revision_id = fci.revision_id
-{2}
-SET {3} = {4}
-WHERE (node.vid IN
-       (SELECT MAX(vid)
-        FROM node
-        GROUP BY nid))
+{3}
+SET {4} = {5}
+WHERE node.vid IN
+      (SELECT MAX(vid)
+       FROM node
+       GROUP BY nid)
 AND node.type = %s
-AND {5} = %s'
+AND {6} = %s'
 AND fcf.entity_type = 'node'
-AND (fcf.deleted = 0 OR fcf.deleted IS NULL)
-AND (fci.revision_id IN
-     (SELECT MAX(revision_id)
-      FROM field_collection_item
-      GROUP BY item_id))
-AND (fci.archived = 0 OR fci.archived IS NULL)
-AND {6} = %s
-AND f.entity_type = 'field_collection_item'
+AND fcf.deleted = 0
+AND fci.revision_id IN
+    (SELECT MAX(revision_id)
+     FROM field_collection_item
+     GROUP BY item_id)
+AND fci.archived = 0
+AND {7} = %s
+AND (f.entity_type = 'field_collection_item' OR f.entity_type IS NULL)
 AND (f.deleted = 0 OR f.deleted IS NULL)
-''' .
-            format(fc_type,
-                   field_name,
-                   term_join,
-                   value_column,
-                   value_str,
-                   key_column_1,
-                   key_column_2)
+'''
         )
-        query_args = [field_value, node_type, node_value, fc_value]
+        query_str = {}
+        query_args = {}
+        for dr_str in ['data', 'revision']:
+            query_str[dr_str] = query_str_raw.format(
+                fc_type,
+                dr_str,
+                field_name,
+                term_join,
+                value_column,
+                value_str,
+                key_column_1,
+                key_column_2
+            )
+            query_args[dr_str] = [field_value, node_type, node_value,
+                                  fc_value]
 
-    ######################## execute the query ########################
+    ####################### execute the queries #######################
 
-    ret = db_obj.execute(db_cur, query_str.strip(), query_args,
-                         has_results=False)
+    for dr_str in ['data', 'revision']:
+        if not db_obj.execute(db_cur, query_str[dr_str].strip(),
+                              query_args[dr_str], has_results=False):
+            # won't be reached currently; script will exit on errors
+            db_obj.rollback()  # ignore errors
+            db_obj.autocommit(db_ac)
+            return None
+
+    # finish the transaction
+    ret = db_obj.commit()
+    db_obj.autocommit(db_ac)
     return None if not ret else True
 
 
@@ -3146,10 +3186,10 @@ def get_drupal_node_ids(db_obj, db_cur, node_cv):
 '''
 SELECT node.nid, node.vid
 FROM node
-WHERE (node.vid IN
-       (SELECT MAX(vid)
-        FROM node
-        GROUP BY nid))
+WHERE node.vid IN
+      (SELECT MAX(vid)
+       FROM node
+       GROUP BY nid)
 AND node.type = %s
 AND {0} = %s
 ''' .
@@ -3200,18 +3240,18 @@ LEFT JOIN field_data_endpoints AS e2
           ON e2.entity_id = e1.entity_id
           AND e2.revision_id = e1.revision_id
           AND e2.endpoints_r_index > e1.endpoints_r_index
-WHERE (e1.revision_id IN
-     (SELECT MAX(revision_id)
-      FROM field_data_endpoints
-      GROUP BY entity_id))
+WHERE e1.revision_id IN
+      (SELECT MAX(revision_id)
+       FROM field_data_endpoints
+       GROUP BY entity_id)
 AND e1.entity_type = 'relation'
 AND e1.bundle = %s
 AND e1.endpoints_entity_type = %s
 AND e1.endpoints_entity_id = %s
-AND (e1.deleted = 0 OR e1.deleted IS NULL)
+AND e1.deleted = 0
 AND e2.endpoints_entity_type = %s
 AND e2.endpoints_entity_id = %s
-AND (e2.deleted = 0 OR e2.deleted IS NULL)
+AND e2.deleted = 0
 '''
     )
     query_args = [relation_type, e1_entity_type, e1_entity_id,
@@ -3275,12 +3315,12 @@ WHERE fcf.entity_type = %s
 AND fcf.bundle = %s
 AND fcf.entity_id = %s
 AND fcf.revision_id = %s
-AND (fcf.deleted = 0 OR fcf.deleted IS NULL)
-AND (fci.revision_id IN
-     (SELECT MAX(revision_id)
-      FROM field_collection_item
-      GROUP BY item_id))
-AND (fci.archived = 0 OR fci.archived IS NULL)
+AND fcf.deleted = 0
+AND fci.revision_id IN
+    (SELECT MAX(revision_id)
+     FROM field_collection_item
+     GROUP BY item_id)
+AND fci.archived = 0
 AND {1} = %s
 ''' .
         format(fc_type, fc_ident_column)
