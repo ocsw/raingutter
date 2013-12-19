@@ -4034,7 +4034,7 @@ WHERE name='site_readonly'
         )
         query_args = ['i:1;' if what else 'i:0;']
         return db_obj.execute(db_cur, query_str.strip(), query_args,
-                              has_results=True)
+                              has_results=False)
 
 
 def pre_action_drupal_readonly(s_db, s_cur, d_db, d_cur):
