@@ -7,7 +7,11 @@ configs for OCS fields
     crontabs
     ip aliases
 
-more IS NULL?
+deleted = 1 rows:
+    drupal cleanup
+    clean up myself
+    filter to temp tables
+    run sep queries per field
 
 testing
 
@@ -41,6 +45,8 @@ error handling: exit/skip?
 autocommit options
 
 node -> title, fc -> label, etc. (?)
+
+add revisions on updates (option)?
 
 user ID option?
 
