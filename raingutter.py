@@ -1870,7 +1870,7 @@ Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, key_cv, value_cv]))
 
             # not deleted
             field_deleted_conds.append(
-                'AND (f{0}.deleted = 0 OR f{0}.deleted IS NULL)'.format(i)
+                'AND f{0}.deleted = 0'.format(i)
             )
 
             # order column
@@ -2109,8 +2109,7 @@ ORDER BY k_node.title, k_node.nid, e1.entity_id, v_node.title, v_node.nid
 
             # field entity type
             field_entity_conds.append(
-                "AND (f{0}.entity_type = 'relation'"
-                " OR f{0}.entity_type IS NULL)".format(i)
+                "AND f{0}.entity_type = 'relation'".format(i)
             )
 
             # handle specified field value
@@ -2121,7 +2120,7 @@ ORDER BY k_node.title, k_node.nid, e1.entity_id, v_node.title, v_node.nid
 
             # not deleted
             field_deleted_conds.append(
-                'AND (f{0}.deleted = 0 OR f{0}.deleted IS NULL)'.format(i)
+                'AND f{0}.deleted = 0'.format(i)
             )
 
             # order column
@@ -2278,8 +2277,7 @@ ORDER BY k_node.title, k_node.nid, e1.entity_id, {10}
 
             # field entity type
             field_entity_conds.append(
-                "AND (f{0}.entity_type = 'field_collection_item'"
-                " OR f{0}.entity_type IS NULL)".format(i)
+                "AND f{0}.entity_type = 'field_collection_item'".format(i)
             )
 
             # handle specified field value
@@ -2290,7 +2288,7 @@ ORDER BY k_node.title, k_node.nid, e1.entity_id, {10}
 
             # not deleted
             field_deleted_conds.append(
-                'AND (f{0}.deleted = 0 OR f{0}.deleted IS NULL)'.format(i)
+                'AND f{0}.deleted = 0'.format(i)
             )
 
             # order column
@@ -2475,7 +2473,7 @@ WHERE node.vid IN
        GROUP BY nid)
 AND node.type = %s
 AND {5} = %s
-AND (f.deleted = 0 OR f.deleted IS NULL)
+AND f.deleted = 0
 '''
         )
         query_str = {}
@@ -2675,8 +2673,8 @@ AND node2.vid IN
      GROUP BY nid)
 AND node2.type = %s
 AND {6} = %s
-AND (f.entity_type = 'relation' OR f.entity_type IS NULL)
-AND (f.deleted = 0 OR f.deleted IS NULL)
+AND f.entity_type = 'relation'
+AND f.deleted = 0
 '''
         )
         query_str = {}
@@ -2779,8 +2777,8 @@ AND fci.revision_id IN
      GROUP BY item_id)
 AND fci.archived = 0
 AND {7} = %s
-AND (f.entity_type = 'field_collection_item' OR f.entity_type IS NULL)
-AND (f.deleted = 0 OR f.deleted IS NULL)
+AND f.entity_type = 'field_collection_item'
+AND f.deleted = 0
 '''
         )
         query_str = {}
