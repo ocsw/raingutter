@@ -2775,7 +2775,7 @@ WHERE node.vid IN
        FROM node
        GROUP BY nid)
 AND node.type = %s
-AND {6} = %s'
+AND {6} = %s
 AND fcf.entity_type = 'node'
 AND fcf.deleted = 0
 AND fci.revision_id IN
