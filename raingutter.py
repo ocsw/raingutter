@@ -4869,7 +4869,10 @@ def run_mode_hook():
 
             # add to the list
             s_rows.append((s_num_keys, s_row))
-        nori.core.status_logger_debug('Final source rows:\n' + s_rows)
+        nori.core.status_logger.debug(
+            'Transformed and filtered source rows:\n' +
+            nori.core.pps(s_rows)
+        )
 
         # get the destination data
         d_rows_raw = dest_func(*dest_args, db_obj=d_db, db_cur=d_cur,
@@ -4896,7 +4899,10 @@ def run_mode_hook():
 
             # add to the list
             d_rows.append((d_num_keys, d_row))
-        nori.core.status_logger_debug('Final destination rows:\n' + d_rows)
+        nori.core.status_logger.debug(
+            'Transformed and filtered destination rows:\n' +
+            nori.core.pps(d_rows)
+        )
 
         # dispatch the actual diff(s)/sync(s)
         if not t_multiple:
