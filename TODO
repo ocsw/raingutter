@@ -1,25 +1,27 @@
 TODO
 
-configs for OCS fields
+OCS:
     controllers - raid (c manufacturer, d model), telephony
-    computed fields, autolabels
-    software: ssh, ssl, bind, postfix, wowza, adobe
-    crontabs
     ip aliases
 
 testing
 
 update modified timestamps
 
+multiple FCs vs. fields
+
 ---
 
-remove cursors?
-
-no_replicate (SET sql_log_bin=0/1; but - check/store)
-
-generic_db_insert
-
-deletes, e.g. if source is NULL and dest isn't
+OCS:
+    crontabs
+    software: ubuntu; ssh, ssl, postfix, bind, wowza, adobe
+    search path?
+    nameservers?
+    firewall?
+    uptime?
+    last seen?
+    disk usage?
+    inode usage?
 
 handle non-unique field titles, fc labels, relations
     probably need to have selects pass IDs, deltas back
@@ -28,6 +30,14 @@ handle non-unique field titles, fc labels, relations
     -> NFS/SMB
 
 separate transform and to_x functions?  compare vs store...
+
+remove cursors?
+
+no_replicate (SET sql_log_bin=0/1; but - check/store)
+
+generic_db_insert
+
+deletes, e.g. if source is NULL and dest isn't
 
 handle interpreting drupal field defaults
 
@@ -40,7 +50,7 @@ error handling: exit/skip?
 
 autocommit options
 
-node -> title, fc -> label, etc. (?)
+node -> title, fc -> label, etc. (?) (and autolabels in config)
 
 add revisions on updates (option)?
 
