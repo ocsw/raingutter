@@ -23,14 +23,15 @@ from __future__ import print_function
 from pprint import pprint as pp  # for debugging
 
 import sys
+import atexit
 import operator
 import collections
+import itertools
 import socket
 import logging
 import logging.handlers
 import copy
 import time
-import atexit
 
 
 #########
@@ -1647,7 +1648,7 @@ def drupal_db_query(db_obj, db_cur, mode, key_cv, value_cv,
 
     Dependencies:
         functions: drupal_db_read(), drupal_db_update()
-        modules: sys, nori
+        modules: sys, itertools, nori
 
     """
 
@@ -1669,7 +1670,85 @@ Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, mode, key_cv, value_cv,
         sys.exit(nori.core.exitvals['internal']['num'])
 
     if mode == 'read':
-        return drupal_db_read(db_obj, db_cur, key_cv, value_cv)
+        #
+        # I finally realized that if you try to retrieve multiple fields
+        # simultaneously, and there are bogus rows with deleted = 1,
+        # you will lose entire result rows.  Even a construct like
+        #     'AND (f.deleted = 0 OR f.deleted IS NULL'
+        # doesn't help, because the column is only NULL if the join
+        # fails entirely.  Moreover, the same problem applies if (for
+        # example) there is a row with the same entity_id but a
+        # different entity_type, so it's not just a question of removing
+        # old/bogus rows from the database.  There are basically two
+        # solutions:
+        # 1) pull out just the matching rows into a temp table, so joins
+        #    to that will either match properly or fail completely
+        # 2) retrieve only one field at a time, and forget about the
+        #    'IS NULL' - the query will just return no results if there
+        #    are no matches
+        # Clearly, the second option is much better.
+        #
+
+        #
+        # First, we need to run a SELECT on each value_cv entry, and
+        # collate the results. Suppose the multiple flag is true in the
+        # template, and there are three sets of keys in the database for
+        # this query.  The first set of keys has two results for the
+        # first value_cv entry, the second has none, and the third has
+        # one.  Now we need to transform this:
+        #     [(K1a, K2a, V1a),
+        #      (K1a, K2a, V1b),
+        #      (K1c, K2c, V1c)]
+        # to this:
+        #     results[(K1a, K2a)][1] = [V1a, V1b]
+        #     results[(K1c, K2c)][1] = [V1c]
+        # For the second value_cv entry, we might have:
+        #     [(K1a, K2a, V2a),
+        #      (K1b, K2b, V2b),
+        #      (K1b, K2b, V2c),
+        #      (K1c, K2c, V2d)]
+        # which becomes:
+        #     results[(K1a, K2a)][2] = [V2a]
+        #     results[(K1b, K2b)][2] = [V2b, V2c]
+        #     results[(K1c, K2c)][2] = [V2d]
+        # and so on.
+        #
+        results = {}
+        for i, cv in enumerate(value_cv):
+            ret = drupal_db_read(db_obj, db_cur, key_cv, [cv])
+            if ret is None:
+                return None
+            for row in ret:
+                if row[0:-1] not in results:
+                    results[row[0:-1]] = {}
+                if i not in results[row[0:-1]]:
+                    results[row[0:-1]][i] = []
+                results[row[0:-1]][i].append(row[-1])
+
+        #
+        # Now we need to re-collate the results into the sort of rows we
+        # would get if we retrieved all of the value_cv entries at once.
+        # Multiple entries should produce Cartesian products, and
+        # missing entries should be replaced with None.  For the example
+        # above, we get:
+        # [(K1a, K2a, V1a, V2a),
+        #  (K1a, K2a, V1b, V2a),
+        #  (K1b, K2b, None, V2b),
+        #  (K1b, K2b, None, V2c),
+        #  (K1c, K2c, V1c, V2d)]
+        #
+        full_rows = []
+        for key_t in results:
+            column_lists = [[x] for x in key_t]
+            for i, cv in enumerate(value_cv):
+                if i not in results[key_t]:
+                    column_lists.append([None])
+                else:
+                    column_lists.append(results[key_t][i])
+            for full_row in itertools.product(*column_lists):
+                full_rows.append(full_row)
+
+        return full_rows
 
     if mode == 'update':
         return drupal_db_update(db_obj, db_cur, key_cv, value_cv,
