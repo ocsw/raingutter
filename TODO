@@ -7,13 +7,9 @@ configs for OCS fields
     crontabs
     ip aliases
 
-deleted = 1 rows:
-    drupal cleanup
-    clean up myself
-    filter to temp tables
-    run sep queries per field
-
 testing
+
+update modified timestamps
 
 ---
 
