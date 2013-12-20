@@ -132,7 +132,7 @@ d_drupal_readonly = None
 #       exists_in_dest, dest_row, has_been_changed)
 # depending on the report_order config setting.
 # The exists_in_source / exists in dest elements are booleans, but can
-# also be None in the case of a multiple-rows template with rows that
+# also be None in the case of a multiple-valued template with rows that
 # don't even have key matches (see the templates setting, below).
 # The has_been_changed element can be True (fully changed), False
 # (partly changed), or None (unchanged).
@@ -300,7 +300,9 @@ The templates for comparing / syncing the databases.
 This must be a sequence of sequences; the inner sequences must have these
 elements:
     * template name [string]
-    * does this template apply to multiple rows per key? [boolean]
+    * can there be multiple value-column values for the same set of key-
+      column values (True), or are the value columns single-valued
+      (False) [boolean]
     * source-DB query function [function]
     * source-DB query function arguments [tuple: (*args, **kwargs)]
     * to-dest transform function [function]
@@ -326,7 +328,12 @@ not enforced (template indexes are provided for disambiguation).  It is
 recommended not to include spaces in the names, for easier specification on
 the command line.
 
-If the multiple-rows-per-key flag is true, matching works differently.
+The multiple-values flag differentiates between cases like a person's
+height (they have exactly one, and it can be known or unknown, or
+correct or incorrect), and cases like a person's credit-card number
+(they may have several).
+
+If the multiple-values flag is true, matching works differently.
 Instead of rows with the same keys matching, and their values being
 compared, rows only match if both the keys and the values are the same.
 
@@ -989,7 +996,7 @@ def validate_config():
         # template name
         nori.setting_check_type(('templates', i, T_NAME_IDX),
                                 nori.core.STRING_TYPES)
-        # multiple rows per key?
+        # multiple-valued value columns?
         nori.setting_check_type(('templates', i, T_MULTIPLE_IDX), bool)
         # source-DB query function
         nori.setting_check_callable(('templates', i, T_S_QUERY_FUNC_IDX),
@@ -1691,11 +1698,11 @@ Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, mode, key_cv, value_cv,
 
         #
         # First, we need to run a SELECT on each value_cv entry, and
-        # collate the results. Suppose the multiple flag is true in the
-        # template, and there are three sets of keys in the database for
-        # this query.  The first set of keys has two results for the
-        # first value_cv entry, the second has none, and the third has
-        # one.  Now we need to transform this:
+        # collate the results. Suppose the multiple-valued flag is true
+        # in the template, and there are three sets of keys in the
+        # database for this query.  The first set of keys has two
+        # results for the first value_cv entry, the second has none, and
+        # the third has one.  Now we need to transform this:
         #     [(K1a, K2a, V1a),
         #      (K1a, K2a, V1b),
         #      (K1c, K2c, V1c)]
