@@ -3660,6 +3660,110 @@ AND t.name = %s
     return ret[1][0]
 
 
+def update_drupal_node_timestamp(db_obj, db_cur, nid, vid):
+
+    """
+    Update the timestamp on a Drupal node.
+
+    Returns True (success) / False (failure).
+
+    Parameters:
+        db_obj: the database connection object to use
+        db_cur: the database cursor object to use
+        nid: the node ID
+        vid: the node revision ID
+
+    Dependencies:
+        modules: time
+
+    """
+
+    # prepare for a transaction
+    db_ac = db_obj.autocommit(None)
+    db_obj.autocommit(False)
+
+    # get the timestamp
+    cur_time = int(time.time())
+
+    # assemble the raw query string and argument list
+    query_str_raw = (
+'''
+UPDATE node{0}
+SET {1} = %s
+WHERE nid = %s
+AND vid = %s
+'''
+    )
+    query_args = [cur_time, nid, vid]
+
+    # execute the queries
+    for dr_str, col_name in [('', 'changed'), ('_revision', 'timestamp')]:
+        query_str = query_str_raw.format(dr_str, col_name)
+        if not db_obj.execute(db_cur, query_str.strip(), query_args,
+                              has_results=False):
+            # won't be reached currently; script will exit on errors
+            db_obj.rollback()  # ignore errors
+            db_obj.autocommit(db_ac)
+            return False
+
+    # finish the transaction
+    ret = db_obj.commit()
+    db_obj.autocommit(db_ac)
+    return ret
+
+
+def update_drupal_relation_timestamp(db_obj, db_cur, rid, vid):
+
+    """
+    Update the timestamp on a Drupal relation.
+
+    Returns True (success) / False (failure).
+
+    Parameters:
+        db_obj: the database connection object to use
+        db_cur: the database cursor object to use
+        rid: the relation ID
+        vid: the relation revision ID
+
+    Dependencies:
+        modules: time
+
+    """
+
+    # prepare for a transaction
+    db_ac = db_obj.autocommit(None)
+    db_obj.autocommit(False)
+
+    # get the timestamp
+    cur_time = int(time.time())
+
+    # assemble the raw query string and argument list
+    query_str_raw = (
+'''
+UPDATE relation{0}
+SET changed = %s
+WHERE rid = %s
+AND vid = %s
+'''
+    )
+    query_args = [cur_time, rid, vid]
+
+    # execute the queries
+    for dr_str in ['', '_revision']:
+        query_str = query_str_raw.format(dr_str)
+        if not db_obj.execute(db_cur, query_str.strip(), query_args,
+                              has_results=False):
+            # won't be reached currently; script will exit on errors
+            db_obj.rollback()  # ignore errors
+            db_obj.autocommit(db_ac)
+            return False
+
+    # finish the transaction
+    ret = db_obj.commit()
+    db_obj.autocommit(db_ac)
+    return ret
+
+
 def insert_drupal_relation(db_obj, db_cur, e1_entity_type, e1_entity_id,
                            relation_type, e2_entity_type, e2_entity_id):
 
