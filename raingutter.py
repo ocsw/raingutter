@@ -1892,7 +1892,7 @@ FROM node
 {3}
 WHERE node.vid IN
       (SELECT MAX(vid)
-       FROM node
+       FROM node_revision
        GROUP BY nid)
 AND node.type = %s
 {4}
@@ -1985,14 +1985,14 @@ LEFT JOIN node AS v_node
           ON v_node.nid = e2.endpoints_entity_id
 WHERE k_node.vid IN
       (SELECT MAX(vid)
-       FROM node
+       FROM node_revision
        GROUP BY nid)
 AND k_node.type = %s
 {3}
 AND e1.revision_id IN
-    (SELECT MAX(revision_id)
-     FROM field_data_endpoints
-     GROUP BY entity_id)
+    (SELECT MAX(vid)
+     FROM relation_revision
+     GROUP BY rid)
 AND e1.entity_type = 'relation'
 AND e1.bundle = %s
 AND e1.endpoints_entity_type = 'node'
@@ -2001,7 +2001,7 @@ AND e2.endpoints_entity_type = 'node'
 AND e2.deleted = 0 OR e2.deleted
 AND v_node.vid IN
     (SELECT MAX(vid)
-     FROM node
+     FROM node_revision
      GROUP BY nid)
 {4}
 {5}
@@ -2150,14 +2150,14 @@ LEFT JOIN node AS node2
 {4}
 WHERE node1.vid IN
       (SELECT MAX(vid)
-       FROM node
+       FROM node_revision
        GROUP BY nid)
 AND node1.type = %s
 {5}
 AND e1.revision_id IN
-    (SELECT MAX(revision_id)
-     FROM field_data_endpoints
-     GROUP BY entity_id)
+    (SELECT MAX(vid)
+     FROM relation_revision
+     GROUP BY rid)
 AND e1.entity_type = 'relation'
 AND e1.bundle = %s
 AND e1.endpoints_entity_type = 'node'
@@ -2166,7 +2166,7 @@ AND e2.endpoints_entity_type = 'node'
 AND e2.deleted = 0
 AND node2.vid IN
     (SELECT MAX(vid)
-     FROM node
+     FROM node_revision
      GROUP BY nid)
 AND node2.type = %s
 {6}
@@ -2316,7 +2316,7 @@ LEFT JOIN field_collection_item as fci
 {5}
 WHERE node.vid IN
       (SELECT MAX(vid)
-       FROM node
+       FROM node_revision
        GROUP BY nid)
 AND node.type = %s
 {6}
@@ -2324,7 +2324,7 @@ AND fcf.entity_type = 'node'
 AND fcf.deleted = 0
 AND fci.revision_id IN
     (SELECT MAX(revision_id)
-     FROM field_collection_item
+     FROM field_collection_item_revision
      GROUP BY item_id)
 AND fci.archived = 0
 {7}
@@ -2476,7 +2476,7 @@ AND f.revision_id = node.vid
 SET {3} = {4}
 WHERE node.vid IN
       (SELECT MAX(vid)
-       FROM node
+       FROM node_revision
        GROUP BY nid)
 AND node.type = %s
 AND {5} = %s
@@ -2547,14 +2547,14 @@ LEFT JOIN node AS v_node
 SET e2.endpoints_entity_id = v_node.nid
 WHERE k_node.vid IN
       (SELECT MAX(vid)
-       FROM node
+       FROM node_revision
        GROUP BY nid)
 AND k_node.type = %s
 AND {1} = %s
 AND e1.revision_id IN
-    (SELECT MAX(revision_id)
-     FROM field_data_endpoints
-     GROUP BY entity_id)
+    (SELECT MAX(vid)
+     FROM relation_revision
+     GROUP BY rid)
 AND e1.entity_type = 'relation'
 AND e1.bundle = %s
 AND e1.endpoints_entity_type = 'node'
@@ -2563,7 +2563,7 @@ AND e2.endpoints_entity_type = 'node'
 AND e2.deleted = 0
 AND v_node.vid IN
     (SELECT MAX(vid)
-     FROM node
+     FROM node_revision
      GROUP BY nid)
 AND v_node.type = %s
 AND {2} = %s
@@ -2660,14 +2660,14 @@ AND f.revision_id = e2.revision_id
 SET {3} = {4}
 WHERE node1.vid IN
       (SELECT MAX(vid)
-       FROM node
+       FROM node_revision
        GROUP BY nid)
 AND node1.type = %s
 AND {5} = %s
 AND e1.revision_id IN
-    (SELECT MAX(revision_id)
-     FROM field_data_endpoints
-     GROUP BY entity_id)
+    (SELECT MAX(vid)
+     FROM relation_revision
+     GROUP BY rid)
 AND e1.entity_type = 'relation'
 AND e1.bundle = %s
 AND e1.endpoints_entity_type = 'node'
@@ -2676,7 +2676,7 @@ AND e2.endpoints_entity_type = 'node'
 AND e2.deleted = 0
 AND node2.vid IN
     (SELECT MAX(vid)
-     FROM node
+     FROM node_revision
      GROUP BY nid)
 AND node2.type = %s
 AND {6} = %s
@@ -2772,7 +2772,7 @@ AND f.revision_id = fci.revision_id
 SET {4} = {5}
 WHERE node.vid IN
       (SELECT MAX(vid)
-       FROM node
+       FROM node_revision
        GROUP BY nid)
 AND node.type = %s
 AND {6} = %s
@@ -2780,7 +2780,7 @@ AND fcf.entity_type = 'node'
 AND fcf.deleted = 0
 AND fci.revision_id IN
     (SELECT MAX(revision_id)
-     FROM field_collection_item
+     FROM field_collection_item_revision
      GROUP BY item_id)
 AND fci.archived = 0
 AND {7} = %s
@@ -3272,7 +3272,7 @@ SELECT node.nid, node.vid
 FROM node
 WHERE node.vid IN
       (SELECT MAX(vid)
-       FROM node
+       FROM node_revision
        GROUP BY nid)
 AND node.type = %s
 AND {0} = %s
@@ -3325,9 +3325,9 @@ LEFT JOIN field_data_endpoints AS e2
           AND e2.revision_id = e1.revision_id
           AND e2.endpoints_r_index > e1.endpoints_r_index
 WHERE e1.revision_id IN
-      (SELECT MAX(revision_id)
-       FROM field_data_endpoints
-       GROUP BY entity_id)
+      (SELECT MAX(vid)
+       FROM relation_revision
+       GROUP BY rid)
 AND e1.entity_type = 'relation'
 AND e1.bundle = %s
 AND e1.endpoints_entity_type = %s
@@ -3402,7 +3402,7 @@ AND fcf.revision_id = %s
 AND fcf.deleted = 0
 AND fci.revision_id IN
     (SELECT MAX(revision_id)
-     FROM field_collection_item
+     FROM field_collection_item_revision
      GROUP BY item_id)
 AND fci.archived = 0
 AND {1} = %s
