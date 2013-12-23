@@ -1199,7 +1199,7 @@ def update_insert_dispatcher(mode, db_obj, db_cur, dest_func, dest_args,
             'Inserting into destination database...'
         )
 
-    # call query function once for each differing column
+    # call query function once for each column
     fulls = 0
     partials = 0
     failures = 0
