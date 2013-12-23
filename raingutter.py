@@ -4357,15 +4357,16 @@ def key_value_copy(source_data, dest_data, dest_key_cv, dest_value_cv):
     Returns a tuple of (key_cv, value_cv), where the value_cv sequence
     contains elements for data that differs between the source and
     destination.
-    The source_data tuple, dest_data tuple, and (dest_key_cv +
-    dest_value_cv) must all be the same length, and the number of keys
-    in the each data tuple must be the same as the length of
+    If dest_data is not None, the source_data tuple, dest_data tuple, and
+    (dest_key_cv + dest_value_cv) must all be the same length, and the
+    number of keys in the each data tuple must be the same as the length of
     dest_key_cv.
     Parameters:
         source_data: a row tuple from the source database results, as
                      modified by the transform function
         dest_data: a row tuple from the destination database results, as
-                     modified by the transform function
+                     modified by the transform function, or None if
+                     there is no matching row
         dest_key_cv: the key cv sequence from the template for the
                      destination database
         dest_value_cv: the value cv sequence from the template for the
@@ -4380,7 +4381,7 @@ def key_value_copy(source_data, dest_data, dest_key_cv, dest_value_cv):
                 (dest_key_cv[i][0], dest_key_cv[i][1], data_val)
             )
         else:
-            if data_val != dest_data[i]:
+            if (dest_data is None) or (data_val != dest_data[i]):
                 new_dest_value_cv.append(
                     (dest_value_cv[i - num_keys][0],
                      dest_value_cv[i - num_keys][1], data_val)
@@ -4765,9 +4766,8 @@ def do_diff_sync(t_index, s_rows, d_rows, d_db, d_cur):
         if not s_found:
             diff_k, diff_i = log_diff(t_index, True, s_row, False, None)
             if nori.core.cfg['action'] == 'sync':
-                if do_sync(t_index, s_row,
-                           (s_row[0], [None for x in s_row[1]]), d_db,
-                           d_cur, diff_k, diff_i):
+                if do_sync(t_index, s_row, (None, None), d_db, d_cur,
+                           diff_k, diff_i):
                     global_callback_needed = True
 
     # check for missing rows in the source DB
