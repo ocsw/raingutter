@@ -3695,7 +3695,7 @@ AND t.name = %s
     return ret[1][0]
 
 
-def update_drupal_node_timestamp(db_obj, db_cur, nid, vid):
+def update_drupal_node_timestamp(db_obj, db_cur, node_cv):
 
     """
     Update the timestamp on a Drupal node.
@@ -3705,35 +3705,52 @@ def update_drupal_node_timestamp(db_obj, db_cur, nid, vid):
     Parameters:
         db_obj: the database connection object to use
         db_cur: the database cursor object to use
-        nid: the node ID
-        vid: the node revision ID
+        node_cv: the entry for the node in a template key_cv sequence
 
     Dependencies:
         modules: time
 
     """
 
+    # node details
+    node_ident = node_cv[0]
+    node_value_type = node_cv[1]
+    node_value = node_cv[2]
+    node_type = node_ident[1]
+    node_id_type = node_ident[2]
+
+    # handle node ID types
+    if node_id_type == 'id':
+        key_column = 'node.nid'
+    elif node_id_type == 'title':
+        key_column = 'node.title'
+
     # prepare for a transaction
     db_ac = db_obj.autocommit(None)
     db_obj.autocommit(False)
 
     # get the timestamp
-    cur_time = int(time.time())
+    curr_time = int(time.time())
 
     # assemble the raw query string and argument list
     query_str_raw = (
 '''
 UPDATE node{0}
 SET {1} = %s
-WHERE nid = %s
-AND vid = %s
+WHERE bundle = %s
+AND {2} = %s
+AND vid IN
+    (SELECT MAX(vid)
+     FROM node_revision
+     GROUP BY nid)
 '''
     )
-    query_args = [cur_time, nid, vid]
+    query_args = [curr_time, node_type, node_value]
 
     # execute the queries
-    for dr_str, col_name in [('', 'changed'), ('_revision', 'timestamp')]:
-        query_str = query_str_raw.format(dr_str, col_name)
+    for dr_str, time_column in [('', 'changed'),
+                                ('_revision', 'timestamp')]:
+        query_str = query_str_raw.format(dr_str, time_column, key_column)
         if not db_obj.execute(db_cur, query_str.strip(), query_args,
                               has_results=False):
             # won't be reached currently; script will exit on errors
@@ -3747,7 +3764,9 @@ AND vid = %s
     return ret
 
 
-def update_drupal_relation_timestamp(db_obj, db_cur, rid, vid):
+def update_drupal_relation_timestamp(db_obj, db_cur, e1_entity_type,
+                                     e1_entity_id, relation_type,
+                                     e2_entity_type, e2_entity_id):
 
     """
     Update the timestamp on a Drupal relation.
@@ -3757,8 +3776,13 @@ def update_drupal_relation_timestamp(db_obj, db_cur, rid, vid):
     Parameters:
         db_obj: the database connection object to use
         db_cur: the database cursor object to use
-        rid: the relation ID
-        vid: the relation revision ID
+        e1_entity_type: the entity type (e.g., 'node') of the relation's
+                        first endpoint
+        e1_entity_id: the entity ID of the relation's first endpoint
+        relation_type: the type string / bundle of the relation
+        e2_entity_type: the entity type (e.g., 'node') of the relation's
+                        second endpoint
+        e2_entity_id: the entity ID of the relation's second endpoint
 
     Dependencies:
         modules: time
@@ -3770,18 +3794,36 @@ def update_drupal_relation_timestamp(db_obj, db_cur, rid, vid):
     db_obj.autocommit(False)
 
     # get the timestamp
-    cur_time = int(time.time())
+    curr_time = int(time.time())
 
     # assemble the raw query string and argument list
     query_str_raw = (
 '''
-UPDATE relation{0}
-SET changed = %s
-WHERE rid = %s
-AND vid = %s
+UPDATE relation{0} as r
+LEFT JOIN field_data_endpoints AS e1
+          ON e1.entity_id = r.rid
+          AND e1.revision_id = r.vid
+LEFT JOIN field_data_endpoints AS e2
+          ON e2.entity_id = e1.entity_id
+          AND e2.revision_id = e1.revision_id
+          AND e2.endpoints_r_index > e1.endpoints_r_index
+SET r.changed = %s
+WHERE e1.entity_type = 'relation'
+AND e1.bundle = %s
+AND e1.revision_id IN
+    (SELECT MAX(vid)
+     FROM relation_revision
+     GROUP BY rid)
+AND e1.endpoints_entity_type = %s
+AND e1.endpoints_entity_id = %s
+AND e1.deleted = 0
+AND e2.endpoints_entity_type = %s
+AND e2.endpoints_entity_id = %s
+AND e2.deleted = 0
 '''
     )
-    query_args = [cur_time, rid, vid]
+    query_args = [curr_time, relation_type, e1_entity_type, e1_entity_id,
+                  e2_entity_type, e2_entity_id]
 
     # execute the queries
     for dr_str in ['', '_revision']:
