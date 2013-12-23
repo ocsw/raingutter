@@ -2378,7 +2378,7 @@ def drupal_db_update(db_obj, db_cur, key_cv, value_cv, no_replicate=False):
 
     Dependencies:
         functions: get_drupal_chain_type()
-        modules: sys, nori
+        modules: sys, time, nori
 
     """
 
@@ -2421,6 +2421,9 @@ Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, key_cv, value_cv,
     db_ac = db_obj.autocommit(None)
     db_obj.autocommit(False)
 
+    # get the timestamp
+    curr_time = int(time.time())
+
     ########## assemble the query strings and argument lists ##########
 
     #
@@ -2437,9 +2440,9 @@ Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, key_cv, value_cv,
 
         # handle node ID types
         if node_id_type == 'id':
-            key_column = 'node.nid'
+            key_column = 'n.nid'
         elif node_id_type == 'title':
-            key_column = 'node.title'
+            key_column = 'n.title'
 
         # field details
         field_cv = value_cv[0]
@@ -2468,33 +2471,37 @@ Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, key_cv, value_cv,
         # query strings and arguments
         query_str_raw = (
 '''
-UPDATE node
-LEFT JOIN field_{0}_field_{1} AS f
-ON f.entity_id = node.nid
-AND f.revision_id = node.vid
-{2}
-SET {3} = {4}
-WHERE node.vid IN
+UPDATE node{0} AS n
+LEFT JOIN field_{1}_field_{2} AS f
+ON f.entity_id = n.nid
+AND f.revision_id = n.vid
+{3}
+SET {4} = {5},
+    {6} = %s
+WHERE n.vid IN
       (SELECT MAX(vid)
        FROM node_revision
        GROUP BY nid)
-AND node.type = %s
-AND {5} = %s
+AND n.type = %s
+AND {7} = %s
 AND f.deleted = 0
 '''
         )
         query_str = {}
         query_args = {}
-        for dr_str in ['data', 'revision']:
-            query_str[dr_str] = query_str_raw.format(
-                dr_str,
+        for dr_str1, dr_str2 in [('data', ''), ('revision', '_revision')]:
+            query_str[dr_str1] = query_str_raw.format(
+                dr_str2,
+                dr_str1,
                 field_name,
                 term_join,
                 value_column,
                 value_str,
+                'n.changed' if dr_str1 == 'data' else 'n.timestamp',
                 key_column
             )
-            query_args[dr_str] = [field_value, node_type, node_value]
+            query_args[dr_str1] = [field_value, node_type, node_value,
+                                   curr_time]
 
     #
     # node -> relation -> node
@@ -2536,21 +2543,27 @@ AND f.deleted = 0
         # query strings and arguments
         query_str_raw = (
 '''
-UPDATE node AS k_node
+UPDATE node{0} AS k_node
 LEFT JOIN field_data_endpoints AS e1
           ON e1.endpoints_entity_id = k_node.nid
-LEFT JOIN field_{0}_endpoints AS e2
+LEFT JOIN field_{1}_endpoints AS e2
           ON e2.entity_id = e1.entity_id
           AND e2.revision_id = e1.revision_id
           AND e2.endpoints_r_index > e1.endpoints_r_index
-LEFT JOIN node AS v_node
-SET e2.endpoints_entity_id = v_node.nid
+LEFT JOIN relation AS r
+          ON r.rid = e2.entity_id
+          AND r.vid = e2.revision_id
+LEFT JOIN node{0} AS v_node
+SET e2.endpoints_entity_id = v_node.nid,
+    {2} = %s,
+    {3} = %s,
+    {4} = %s
 WHERE k_node.vid IN
       (SELECT MAX(vid)
        FROM node_revision
        GROUP BY nid)
 AND k_node.type = %s
-AND {1} = %s
+AND {5} = %s
 AND e1.revision_id IN
     (SELECT MAX(vid)
      FROM relation_revision
@@ -2566,19 +2579,26 @@ AND v_node.vid IN
      FROM node_revision
      GROUP BY nid)
 AND v_node.type = %s
-AND {2} = %s
+AND {6} = %s
 '''
         )
         query_str = {}
         query_args = {}
-        for dr_str in ['data', 'revision']:
-            query_str[dr_str] = query_str_raw.format(
-                dr_str,
+        for dr_str1, dr_str2 in [('data', ''), ('revision', '_revision')]:
+            query_str[dr_str1] = query_str_raw.format(
+                dr_str2,
+                dr_str1,
+                'k_node.changed' if dr_str1 == 'data'
+                                 else 'k_node_revision.timestamp',
+                'v_node.changed' if dr_str1 == 'data'
+                                 else 'v_node_revision.timestamp',
+                'r.changed',
                 key_column,
                 value_column
             )
-            query_args[dr_str] = [k_node_type, k_node_value, rel_type,
-                                  v_node_type, v_node_value]
+            query_args[dr_str1] = [curr_time, curr_time, curr_time,
+                                   k_node_type, k_node_value, rel_type,
+                                   v_node_type, v_node_value]
 
     #
     # node -> relation & node -> relation_field (incl. term refs)
@@ -2644,26 +2664,32 @@ AND {2} = %s
         # query strings and arguments
         query_str_raw = (
 '''
-UPDATE node AS node1
+UPDATE node{0} AS node1
 LEFT JOIN field_data_endpoints AS e1
           ON e1.endpoints_entity_id = node1.nid
 LEFT JOIN field_data_endpoints AS e2
           ON e2.entity_id = e1.entity_id
           AND e2.revision_id = e1.revision_id
           AND e2.endpoints_r_index > e1.endpoints_r_index
-LEFT JOIN node AS node2
+LEFT JOIN relation AS r
+          ON r.rid = e2.entity_id
+          AND r.vid = e2.revision_id
+LEFT JOIN node{0} AS node2
           ON node2.nid = e2.endpoints_entity_id
-LEFT JOIN field_{0}_field_{1} AS f
+LEFT JOIN field_{1}_field_{2} AS f
 ON f.entity_id = e2.entity_id
 AND f.revision_id = e2.revision_id
-{2}
-SET {3} = {4}
+{3}
+SET {4} = {5},
+    {6} = %s,
+    {7} = %s,
+    {8} = %s
 WHERE node1.vid IN
       (SELECT MAX(vid)
        FROM node_revision
        GROUP BY nid)
 AND node1.type = %s
-AND {5} = %s
+AND {9} = %s
 AND e1.revision_id IN
     (SELECT MAX(vid)
      FROM relation_revision
@@ -2679,25 +2705,30 @@ AND node2.vid IN
      FROM node_revision
      GROUP BY nid)
 AND node2.type = %s
-AND {6} = %s
+AND {10} = %s
 AND f.entity_type = 'relation'
 AND f.deleted = 0
 '''
         )
         query_str = {}
         query_args = {}
-        for dr_str in ['data', 'revision']:
-            query_str[dr_str] = query_str_raw.format(
-                dr_str,
+        for dr_str1, dr_str2 in [('data', ''), ('revision', '_revision')]:
+            query_str[dr_str1] = query_str_raw.format(
+                dr_str2,
+                dr_str1,
                 field_name,
                 term_join,
                 value_column,
                 value_str,
+                'n.changed' if dr_str1 == 'data' else 'n.timestamp',
+                'n.changed' if dr_str1 == 'data' else 'n.timestamp',
+                'r.changed',
                 key_column_1,
                 key_column_2
             )
-            query_args[dr_str] = [field_value, node1_type, node1_value,
-                                  rel_type, node2_type, node2_value]
+            query_args[dr_str1] = [field_value, curr_time, curr_time,
+                                   curr_time, node1_type, node1_value,
+                                   rel_type, node2_type, node2_value]
 
     #
     # node -> fc -> field (including term references)
@@ -2713,9 +2744,9 @@ AND f.deleted = 0
 
         # handle node ID types
         if node_id_type == 'id':
-            key_column_1 = 'node.nid'
+            key_column_1 = 'n.nid'
         elif node_id_type == 'title':
-            key_column_1 = 'node.title'
+            key_column_1 = 'n.title'
 
         # fc details
         fc_cv = key_cv[1]
@@ -2758,24 +2789,25 @@ AND f.deleted = 0
         # query strings and arguments
         query_str_raw = (
 '''
-UPDATE node
-LEFT JOIN field_data_field_{0} AS fcf
-          ON fcf.entity_id = node.nid
-          AND fcf.revision_id = node.vid
+UPDATE node{0} AS n
+LEFT JOIN field_data_field_{1} AS fcf
+          ON fcf.entity_id = n.nid
+          AND fcf.revision_id = n.vid
 LEFT JOIN field_collection_item as fci
-          ON fci.item_id = fcf.field_{0}_value
-          AND fci.revision_id = fcf.field_{0}_revision_id
-LEFT JOIN field_{1}_field_{2} AS f
+          ON fci.item_id = fcf.field_{1}_value
+          AND fci.revision_id = fcf.field_{1}_revision_id
+LEFT JOIN field_{2}_field_{3} AS f
 ON f.entity_id = fci.item_id
 AND f.revision_id = fci.revision_id
-{3}
-SET {4} = {5}
-WHERE node.vid IN
+{4}
+SET {5} = {6},
+    {7} = %s
+WHERE n.vid IN
       (SELECT MAX(vid)
        FROM node_revision
        GROUP BY nid)
-AND node.type = %s
-AND {6} = %s
+AND n.type = %s
+AND {8} = %s
 AND fcf.entity_type = 'node'
 AND fcf.deleted = 0
 AND fci.revision_id IN
@@ -2783,26 +2815,29 @@ AND fci.revision_id IN
      FROM field_collection_item_revision
      GROUP BY item_id)
 AND fci.archived = 0
-AND {7} = %s
+AND {9} = %s
 AND f.entity_type = 'field_collection_item'
 AND f.deleted = 0
 '''
         )
         query_str = {}
         query_args = {}
-        for dr_str in ['data', 'revision']:
-            query_str[dr_str] = query_str_raw.format(
+        for dr_str1, dr_str2 in [('data', ''), ('revision', '_revision')]:
+            query_str[dr_str1] = query_str_raw.format(
+                dr_str2,
                 fc_type,
-                dr_str,
+                dr_str1,
                 field_name,
                 term_join,
                 value_column,
                 value_str,
+                'n.changed' if dr_str1 == 'data'
+                            else 'n.timestamp',
                 key_column_1,
                 key_column_2
             )
-            query_args[dr_str] = [field_value, node_type, node_value,
-                                  fc_value]
+            query_args[dr_str1] = [field_value, curr_time, node_type,
+                                   node_value, fc_value]
 
     ####################### execute the queries #######################
 
