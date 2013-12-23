@@ -6,8 +6,6 @@ OCS:
 
 testing
 
-update modified timestamps
-
 NULLs in source as part of multi-field template
 
 ---
@@ -30,6 +28,8 @@ handle non-unique field titles, fc labels, relations
     -> NFS/SMB
 
 separate transform and to_x functions?  compare vs store...
+
+update timestamp on previous node when updating n->r->n?
 
 remove cursors?
 
