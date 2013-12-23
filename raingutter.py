@@ -4666,6 +4666,12 @@ def do_sync(t_index, s_row, d_row, d_db, d_cur, diff_k, diff_i):
     new_key_cv, new_value_cv = key_value_copy(
         s_row[1], d_row[1], dest_kwargs['key_cv'], dest_kwargs['value_cv']
     )
+    if (dest_type == 'drupal') and (None in [x[2] for x in new_value_cv]):
+        nori.core.status_logger.info(
+"""The source data includes NULLs, but Drupal databases can't contain NULLs;
+skipping this {0}.""".format(mode)
+        )
+        return False
 
     # do the updates / inserts
     global_callback_needed = False
