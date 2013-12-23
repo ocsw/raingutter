@@ -3828,6 +3828,9 @@ def insert_drupal_relation(db_obj, db_cur, e1_entity_type, e1_entity_id,
     db_ac = db_obj.autocommit(None)
     db_obj.autocommit(False)
 
+    # get the timestamp
+    curr_time = int(time.time())
+
     # insert the data row for the relation
     query_str = (
 '''
@@ -3837,8 +3840,7 @@ VALUES
 (%s, 0, 1, %s, %s, 2)
 '''
     )
-    cur_time = int(time.time())
-    query_args = [relation_type, cur_time, cur_time]
+    query_args = [relation_type, curr_time, curr_time]
     if not db_obj.execute(db_cur, query_str.strip(), query_args,
                           has_results=False):
         # won't be reached currently; script will exit on errors
@@ -3864,8 +3866,7 @@ VALUES
 (%s, %s, 1, %s, %s, 2)
 '''
     )
-    cur_time = int(time.time())
-    query_args = [rid, relation_type, cur_time, cur_time]
+    query_args = [rid, relation_type, curr_time, curr_time]
     if not db_obj.execute(db_cur, query_str.strip(), query_args,
                           has_results=False):
         # won't be reached currently; script will exit on errors
