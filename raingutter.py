@@ -1938,9 +1938,9 @@ ORDER BY node.title, node.nid, {7}
             k_node_value_cond = 'AND {0} = %s'.format(key_column)
 
         # relation details
-        rel_cv = key_cv[1]
-        rel_ident = rel_cv[0]
-        rel_type = rel_ident[1]
+        relation_cv = key_cv[1]
+        relation_ident = relation_cv[0]
+        relation_type = relation_ident[1]
 
         # value-node details
         v_node_cv = value_cv[0]
@@ -2015,7 +2015,7 @@ ORDER BY k_node.title, k_node.nid, e1.entity_id, v_node.title, v_node.nid
         query_args = [k_node_type]
         if len(k_node_cv) > 2:
             query_args.append(k_node_value)
-        query_args.append(rel_type)
+        query_args.append(relation_type)
         if v_node_type is not None:
             query_args.append(v_node_type)
         if len(v_node_cv) > 2:
@@ -2046,9 +2046,9 @@ ORDER BY k_node.title, k_node.nid, e1.entity_id, v_node.title, v_node.nid
             node1_value_cond = 'AND {0} = %s'.format(key_column_1)
 
         # relation details
-        rel_cv = key_cv[1]
-        rel_ident = rel_cv[0]
-        rel_type = rel_ident[1]
+        relation_cv = key_cv[1]
+        relation_ident = relation_cv[0]
+        relation_type = relation_ident[1]
 
         # node2 details
         node2_cv = key_cv[2]
@@ -2188,7 +2188,7 @@ ORDER BY k_node.title, k_node.nid, e1.entity_id, {10}
         query_args = [node1_type]
         if len(node1_cv) > 2:
             query_args.append(node1_value)
-        query_args.append(rel_type)
+        query_args.append(relation_type)
         query_args.append(node2_type)
         if len(node2_cv) > 2:
             query_args.append(node2_value)
@@ -2515,9 +2515,9 @@ AND f.deleted = 0
             key_column = 'k_node.title'
 
         # relation details
-        rel_cv = key_cv[1]
-        rel_ident = rel_cv[0]
-        rel_type = rel_ident[1]
+        relation_cv = key_cv[1]
+        relation_ident = relation_cv[0]
+        relation_type = relation_ident[1]
 
         # value-node details
         v_node_cv = value_cv[0]
@@ -2577,7 +2577,7 @@ AND {2} = %s
                 key_column,
                 value_column
             )
-            query_args[dr_str] = [k_node_type, k_node_value, rel_type,
+            query_args[dr_str] = [k_node_type, k_node_value, relation_type,
                                   v_node_type, v_node_value]
 
     #
@@ -2599,9 +2599,9 @@ AND {2} = %s
             key_column_1 = 'node1.title'
 
         # relation details
-        rel_cv = key_cv[1]
-        rel_ident = rel_cv[0]
-        rel_type = rel_ident[1]
+        relation_cv = key_cv[1]
+        relation_ident = relation_cv[0]
+        relation_type = relation_ident[1]
 
         # node2 details
         node2_cv = key_cv[2]
@@ -2697,7 +2697,7 @@ AND f.deleted = 0
                 key_column_2
             )
             query_args[dr_str] = [field_value, node1_type, node1_value,
-                                  rel_type, node2_type, node2_value]
+                                  relation_type, node2_type, node2_value]
 
     #
     # node -> fc -> field (including term references)
@@ -2930,9 +2930,9 @@ Skipping insert.''' .
         k_node_id_type = k_node_ident[2]
 
         # relation details
-        rel_cv = key_cv[1]
-        rel_ident = rel_cv[0]
-        rel_type = rel_ident[1]
+        relation_cv = key_cv[1]
+        relation_ident = relation_cv[0]
+        relation_type = relation_ident[1]
 
         # value-node details
         v_node_cv = value_cv[0]
@@ -3015,9 +3015,9 @@ Skipping insert.''' .
             key_column_1 = 'node1.title'
 
         # relation details
-        rel_cv = key_cv[1]
-        rel_ident = rel_cv[0]
-        rel_type = rel_ident[1]
+        relation_cv = key_cv[1]
+        relation_ident = relation_cv[0]
+        relation_type = relation_ident[1]
 
         # node2 details
         node2_cv = key_cv[2]
