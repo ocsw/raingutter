@@ -2378,7 +2378,7 @@ def drupal_db_update(db_obj, db_cur, key_cv, value_cv, no_replicate=False):
 
     Dependencies:
         functions: get_drupal_chain_type()
-        modules: sys, time, nori
+        modules: sys, nori
 
     """
 
@@ -2421,9 +2421,6 @@ Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, key_cv, value_cv,
     db_ac = db_obj.autocommit(None)
     db_obj.autocommit(False)
 
-    # get the timestamp
-    curr_time = int(time.time())
-
     ########## assemble the query strings and argument lists ##########
 
     #
@@ -2440,9 +2437,9 @@ Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, key_cv, value_cv,
 
         # handle node ID types
         if node_id_type == 'id':
-            key_column = 'n.nid'
+            key_column = 'node.nid'
         elif node_id_type == 'title':
-            key_column = 'n.title'
+            key_column = 'node.title'
 
         # field details
         field_cv = value_cv[0]
@@ -2471,37 +2468,33 @@ Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, key_cv, value_cv,
         # query strings and arguments
         query_str_raw = (
 '''
-UPDATE node{0} AS n
-LEFT JOIN field_{1}_field_{2} AS f
-ON f.entity_id = n.nid
-AND f.revision_id = n.vid
-{3}
-SET {4} = {5},
-    {6} = %s
-WHERE n.vid IN
+UPDATE node
+LEFT JOIN field_{0}_field_{1} AS f
+ON f.entity_id = node.nid
+AND f.revision_id = node.vid
+{2}
+SET {3} = {4}
+WHERE node.vid IN
       (SELECT MAX(vid)
        FROM node_revision
        GROUP BY nid)
-AND n.type = %s
-AND {7} = %s
+AND node.type = %s
+AND {5} = %s
 AND f.deleted = 0
 '''
         )
         query_str = {}
         query_args = {}
-        for dr_str1, dr_str2 in [('data', ''), ('revision', '_revision')]:
-            query_str[dr_str1] = query_str_raw.format(
-                dr_str2,
-                dr_str1,
+        for dr_str in ['data', 'revision']:
+            query_str[dr_str] = query_str_raw.format(
+                dr_str,
                 field_name,
                 term_join,
                 value_column,
                 value_str,
-                'n.changed' if dr_str1 == 'data' else 'n.timestamp',
                 key_column
             )
-            query_args[dr_str1] = [field_value, curr_time, node_type,
-                                   node_value]
+            query_args[dr_str] = [field_value, node_type, node_value]
 
     #
     # node -> relation -> node
@@ -2543,27 +2536,21 @@ AND f.deleted = 0
         # query strings and arguments
         query_str_raw = (
 '''
-UPDATE node{0} AS k_node
+UPDATE node AS k_node
 LEFT JOIN field_data_endpoints AS e1
           ON e1.endpoints_entity_id = k_node.nid
-LEFT JOIN field_{1}_endpoints AS e2
+LEFT JOIN field_{0}_endpoints AS e2
           ON e2.entity_id = e1.entity_id
           AND e2.revision_id = e1.revision_id
           AND e2.endpoints_r_index > e1.endpoints_r_index
-LEFT JOIN relation AS r
-          ON r.rid = e2.entity_id
-          AND r.vid = e2.revision_id
-LEFT JOIN node{0} AS v_node
-SET e2.endpoints_entity_id = v_node.nid,
-    {2} = %s,
-    {3} = %s,
-    {4} = %s
+LEFT JOIN node AS v_node
+SET e2.endpoints_entity_id = v_node.nid
 WHERE k_node.vid IN
       (SELECT MAX(vid)
        FROM node_revision
        GROUP BY nid)
 AND k_node.type = %s
-AND {5} = %s
+AND {1} = %s
 AND e1.revision_id IN
     (SELECT MAX(vid)
      FROM relation_revision
@@ -2579,26 +2566,19 @@ AND v_node.vid IN
      FROM node_revision
      GROUP BY nid)
 AND v_node.type = %s
-AND {6} = %s
+AND {2} = %s
 '''
         )
         query_str = {}
         query_args = {}
-        for dr_str1, dr_str2 in [('data', ''), ('revision', '_revision')]:
-            query_str[dr_str1] = query_str_raw.format(
-                dr_str2,
-                dr_str1,
-                'k_node.changed' if dr_str1 == 'data'
-                                 else 'k_node_revision.timestamp',
-                'v_node.changed' if dr_str1 == 'data'
-                                 else 'v_node_revision.timestamp',
-                'r.changed',
+        for dr_str in ['data', 'revision']:
+            query_str[dr_str] = query_str_raw.format(
+                dr_str,
                 key_column,
                 value_column
             )
-            query_args[dr_str1] = [curr_time, curr_time, curr_time,
-                                   k_node_type, k_node_value, rel_type,
-                                   v_node_type, v_node_value]
+            query_args[dr_str] = [k_node_type, k_node_value, rel_type,
+                                  v_node_type, v_node_value]
 
     #
     # node -> relation & node -> relation_field (incl. term refs)
@@ -2664,32 +2644,26 @@ AND {6} = %s
         # query strings and arguments
         query_str_raw = (
 '''
-UPDATE node{0} AS node1
+UPDATE node AS node1
 LEFT JOIN field_data_endpoints AS e1
           ON e1.endpoints_entity_id = node1.nid
 LEFT JOIN field_data_endpoints AS e2
           ON e2.entity_id = e1.entity_id
           AND e2.revision_id = e1.revision_id
           AND e2.endpoints_r_index > e1.endpoints_r_index
-LEFT JOIN relation AS r
-          ON r.rid = e2.entity_id
-          AND r.vid = e2.revision_id
-LEFT JOIN node{0} AS node2
+LEFT JOIN node AS node2
           ON node2.nid = e2.endpoints_entity_id
-LEFT JOIN field_{1}_field_{2} AS f
+LEFT JOIN field_{0}_field_{1} AS f
 ON f.entity_id = e2.entity_id
 AND f.revision_id = e2.revision_id
-{3}
-SET {4} = {5},
-    {6} = %s,
-    {7} = %s,
-    {8} = %s
+{2}
+SET {3} = {4}
 WHERE node1.vid IN
       (SELECT MAX(vid)
        FROM node_revision
        GROUP BY nid)
 AND node1.type = %s
-AND {9} = %s
+AND {5} = %s
 AND e1.revision_id IN
     (SELECT MAX(vid)
      FROM relation_revision
@@ -2705,30 +2679,25 @@ AND node2.vid IN
      FROM node_revision
      GROUP BY nid)
 AND node2.type = %s
-AND {10} = %s
+AND {6} = %s
 AND f.entity_type = 'relation'
 AND f.deleted = 0
 '''
         )
         query_str = {}
         query_args = {}
-        for dr_str1, dr_str2 in [('data', ''), ('revision', '_revision')]:
-            query_str[dr_str1] = query_str_raw.format(
-                dr_str2,
-                dr_str1,
+        for dr_str in ['data', 'revision']:
+            query_str[dr_str] = query_str_raw.format(
+                dr_str,
                 field_name,
                 term_join,
                 value_column,
                 value_str,
-                'n.changed' if dr_str1 == 'data' else 'n.timestamp',
-                'n.changed' if dr_str1 == 'data' else 'n.timestamp',
-                'r.changed',
                 key_column_1,
                 key_column_2
             )
-            query_args[dr_str1] = [field_value, curr_time, curr_time,
-                                   curr_time, node1_type, node1_value,
-                                   rel_type, node2_type, node2_value]
+            query_args[dr_str] = [field_value, node1_type, node1_value,
+                                  rel_type, node2_type, node2_value]
 
     #
     # node -> fc -> field (including term references)
@@ -2744,9 +2713,9 @@ AND f.deleted = 0
 
         # handle node ID types
         if node_id_type == 'id':
-            key_column_1 = 'n.nid'
+            key_column_1 = 'node.nid'
         elif node_id_type == 'title':
-            key_column_1 = 'n.title'
+            key_column_1 = 'node.title'
 
         # fc details
         fc_cv = key_cv[1]
@@ -2789,25 +2758,24 @@ AND f.deleted = 0
         # query strings and arguments
         query_str_raw = (
 '''
-UPDATE node{0} AS n
-LEFT JOIN field_data_field_{1} AS fcf
-          ON fcf.entity_id = n.nid
-          AND fcf.revision_id = n.vid
+UPDATE node
+LEFT JOIN field_data_field_{0} AS fcf
+          ON fcf.entity_id = node.nid
+          AND fcf.revision_id = node.vid
 LEFT JOIN field_collection_item as fci
-          ON fci.item_id = fcf.field_{1}_value
-          AND fci.revision_id = fcf.field_{1}_revision_id
-LEFT JOIN field_{2}_field_{3} AS f
+          ON fci.item_id = fcf.field_{0}_value
+          AND fci.revision_id = fcf.field_{0}_revision_id
+LEFT JOIN field_{1}_field_{2} AS f
 ON f.entity_id = fci.item_id
 AND f.revision_id = fci.revision_id
-{4}
-SET {5} = {6},
-    {7} = %s
-WHERE n.vid IN
+{3}
+SET {4} = {5}
+WHERE node.vid IN
       (SELECT MAX(vid)
        FROM node_revision
        GROUP BY nid)
-AND n.type = %s
-AND {8} = %s
+AND node.type = %s
+AND {6} = %s
 AND fcf.entity_type = 'node'
 AND fcf.deleted = 0
 AND fci.revision_id IN
@@ -2815,29 +2783,26 @@ AND fci.revision_id IN
      FROM field_collection_item_revision
      GROUP BY item_id)
 AND fci.archived = 0
-AND {9} = %s
+AND {7} = %s
 AND f.entity_type = 'field_collection_item'
 AND f.deleted = 0
 '''
         )
         query_str = {}
         query_args = {}
-        for dr_str1, dr_str2 in [('data', ''), ('revision', '_revision')]:
-            query_str[dr_str1] = query_str_raw.format(
-                dr_str2,
+        for dr_str in ['data', 'revision']:
+            query_str[dr_str] = query_str_raw.format(
                 fc_type,
-                dr_str1,
+                dr_str,
                 field_name,
                 term_join,
                 value_column,
                 value_str,
-                'n.changed' if dr_str1 == 'data'
-                            else 'n.timestamp',
                 key_column_1,
                 key_column_2
             )
-            query_args[dr_str1] = [field_value, curr_time, node_type,
-                                   node_value, fc_value]
+            query_args[dr_str] = [field_value, node_type, node_value,
+                                  fc_value]
 
     ####################### execute the queries #######################
 
@@ -3693,6 +3658,110 @@ AND t.name = %s
         )
         return None
     return ret[1][0]
+
+
+def update_drupal_node_timestamp(db_obj, db_cur, nid, vid):
+
+    """
+    Update the timestamp on a Drupal node.
+
+    Returns True (success) / False (failure).
+
+    Parameters:
+        db_obj: the database connection object to use
+        db_cur: the database cursor object to use
+        nid: the node ID
+        vid: the node revision ID
+
+    Dependencies:
+        modules: time
+
+    """
+
+    # prepare for a transaction
+    db_ac = db_obj.autocommit(None)
+    db_obj.autocommit(False)
+
+    # get the timestamp
+    cur_time = int(time.time())
+
+    # assemble the raw query string and argument list
+    query_str_raw = (
+'''
+UPDATE node{0}
+SET {1} = %s
+WHERE nid = %s
+AND vid = %s
+'''
+    )
+    query_args = [cur_time, nid, vid]
+
+    # execute the queries
+    for dr_str, col_name in [('', 'changed'), ('_revision', 'timestamp')]:
+        query_str = query_str_raw.format(dr_str, col_name)
+        if not db_obj.execute(db_cur, query_str.strip(), query_args,
+                              has_results=False):
+            # won't be reached currently; script will exit on errors
+            db_obj.rollback()  # ignore errors
+            db_obj.autocommit(db_ac)
+            return False
+
+    # finish the transaction
+    ret = db_obj.commit()
+    db_obj.autocommit(db_ac)
+    return ret
+
+
+def update_drupal_relation_timestamp(db_obj, db_cur, rid, vid):
+
+    """
+    Update the timestamp on a Drupal relation.
+
+    Returns True (success) / False (failure).
+
+    Parameters:
+        db_obj: the database connection object to use
+        db_cur: the database cursor object to use
+        rid: the relation ID
+        vid: the relation revision ID
+
+    Dependencies:
+        modules: time
+
+    """
+
+    # prepare for a transaction
+    db_ac = db_obj.autocommit(None)
+    db_obj.autocommit(False)
+
+    # get the timestamp
+    cur_time = int(time.time())
+
+    # assemble the raw query string and argument list
+    query_str_raw = (
+'''
+UPDATE relation{0}
+SET changed = %s
+WHERE rid = %s
+AND vid = %s
+'''
+    )
+    query_args = [cur_time, rid, vid]
+
+    # execute the queries
+    for dr_str in ['', '_revision']:
+        query_str = query_str_raw.format(dr_str)
+        if not db_obj.execute(db_cur, query_str.strip(), query_args,
+                              has_results=False):
+            # won't be reached currently; script will exit on errors
+            db_obj.rollback()  # ignore errors
+            db_obj.autocommit(db_ac)
+            return False
+
+    # finish the transaction
+    ret = db_obj.commit()
+    db_obj.autocommit(db_ac)
+    return ret
 
 
 def insert_drupal_relation(db_obj, db_cur, e1_entity_type, e1_entity_id,
