@@ -2825,6 +2825,8 @@ AND f.deleted = 0
 
     if db_cur.rowcount == 0:
         # nothing was actually updated, don't worry about timestamps
+        # (not only shouldn't they be updated, it would mess up the
+        # value of db_cur.rowcount, which the dispatcher needs)
         return True
 
     ###################### update the timestamps #######################
