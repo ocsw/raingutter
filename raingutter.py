@@ -2500,8 +2500,8 @@ AND f.deleted = 0
                 'n.changed' if dr_str1 == 'data' else 'n.timestamp',
                 key_column
             )
-            query_args[dr_str1] = [field_value, node_type, node_value,
-                                   curr_time]
+            query_args[dr_str1] = [field_value, curr_time, node_type,
+                                   node_value]
 
     #
     # node -> relation -> node
