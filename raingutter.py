@@ -2823,6 +2823,10 @@ AND f.deleted = 0
     if not ret:
         return None
 
+    if db_cur.rowcount == 0:
+        # nothing was actually updated, don't worry about timestamps
+        return True
+
     ###################### update the timestamps #######################
 
     def wrap_get_drupal_node_ids(db_obj, db_cur, node_cv, descr):
