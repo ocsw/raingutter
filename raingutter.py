@@ -1429,13 +1429,13 @@ def generic_db_update(db_obj, db_cur, tables, key_cv, value_cv,
 generic_db_update(); call was (in expanded notation):
 
 generic_db_update(db_obj={0},
-                 db_cur={1},
-                 tables={2},
-                 key_cv={3},
-                 value_cv={4},
-                 where_str={5},
-                 where_args={6},
-                 no_replicate={7})
+                  db_cur={1},
+                  tables={2},
+                  key_cv={3},
+                  value_cv={4},
+                  where_str={5},
+                  where_args={6},
+                  no_replicate={7})
 
 Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, tables, key_cv, value_cv,
                                    where_str, where_args, no_replicate]))
@@ -1450,7 +1450,7 @@ Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, tables, key_cv, value_cv,
     else:
         query_str += tables
     query_str += '\n'
-    query_str += 'SET {0} = %s'.format(value_cv[0][0]) +  '\n'
+    query_str += 'SET {0} = %s'.format(value_cv[0][0]) + '\n'
     query_args.append(value_cv[0][2])
     where_parts = []
     if where_str:
@@ -1491,13 +1491,13 @@ def generic_db_insert(db_obj, db_cur, tables, key_cv, value_cv,
 generic_db_update(); call was (in expanded notation):
 
 generic_db_update(db_obj={0},
-                 db_cur={1},
-                 tables={2},
-                 key_cv={3},
-                 value_cv={4},
-                 where_str={5},
-                 where_args={6},
-                 no_replicate={7})
+                  db_cur={1},
+                  tables={2},
+                  key_cv={3},
+                  value_cv={4},
+                  where_str={5},
+                  where_args={6},
+                  no_replicate={7})
 
 Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, tables, key_cv, value_cv,
                                    where_str, where_args, no_replicate]))
