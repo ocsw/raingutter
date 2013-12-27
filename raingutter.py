@@ -60,14 +60,16 @@ T_MULTIPLE_IDX = 1
 T_S_QUERY_FUNC_IDX = 2
 T_S_QUERY_ARGS_IDX = 3
 T_TO_D_FUNC_IDX = 4
-T_S_CHANGE_FUNC_IDX = 5
-T_D_QUERY_FUNC_IDX = 6
-T_D_QUERY_ARGS_IDX = 7
-T_TO_S_FUNC_IDX = 8
-T_D_CHANGE_FUNC_IDX = 9
-T_KEY_MODE_IDX = 10
-T_KEY_LIST_IDX = 11
-T_IDX_COUNT = 12
+T_S_NO_REPL_IDX = 5
+T_S_CHANGE_FUNC_IDX = 6
+T_D_QUERY_FUNC_IDX = 7
+T_D_QUERY_ARGS_IDX = 8
+T_TO_S_FUNC_IDX = 9
+T_D_NO_REPL_IDX = 10
+T_D_CHANGE_FUNC_IDX = 11
+T_KEY_MODE_IDX = 12
+T_KEY_LIST_IDX = 13
+T_IDX_COUNT = 14
 
 
 ##################
@@ -306,10 +308,12 @@ elements:
     * source-DB query function [function]
     * source-DB query function arguments [tuple: (*args, **kwargs)]
     * to-dest transform function [function]
+    * don't replicate source-DB changes? [boolean]
     * source-DB change callback function [function]
     * dest-DB query function [function]
     * dest-DB query function arguments [tuple: (*args, **kwargs)]
     * to-source transform function [function]
+    * don't replicate dest-DB changes? [boolean]
     * dest-DB change callback function [function]
     * key mode [string]
     * key list [list]
@@ -358,6 +362,7 @@ other *args and **kwargs:
     value_cv: similar to key_cv, but for the 'value' columns; the third
               elements of the tuples are only used in the 'update' and
               'insert' modes
+
 Note that the format of the column names may differ between the two
 databases, and the values may also require transformation (see below).
 What matters is that the sets of key and value columns for each database
@@ -419,6 +424,10 @@ handle data-type conversion on both ends.
 Both transform functions will be called before comparing data, so be sure
 that they both output the data in the same format.  This format must also
 match the keys specified in the per-template and global key lists.
+
+If the don't-replicate flags are True, replication will be turned off before
+making any changes associated with this template.  This requires SUPER
+privileges in MySQL.
 
 The change callback functions must be either None, or else functions to call
 if this template has caused any changes in the database for a given row.
@@ -1012,6 +1021,8 @@ def validate_config():
         # to-dest transform function
         nori.setting_check_callable(('templates', i, T_TO_D_FUNC_IDX),
                                     may_be_none=True)
+        # source-DB don't-replicate flag
+        nori.setting_check_type(('templates', i, T_S_NO_REPL_IDX), bool)
         # source-DB change callback function
         nori.setting_check_callable(('templates', i, T_S_CHANGE_FUNC_IDX),
                                     may_be_none=True)
@@ -1029,6 +1040,8 @@ def validate_config():
         # to-source transform function
         nori.setting_check_callable(('templates', i, T_TO_S_FUNC_IDX),
                                     may_be_none=True)
+        # dest-DB don't-replicate flag
+        nori.setting_check_type(('templates', i, T_D_NO_REPL_IDX), bool)
         # dest-DB change callback function
         nori.setting_check_callable(('templates', i, T_D_CHANGE_FUNC_IDX),
                                     may_be_none=True)
@@ -1157,7 +1170,8 @@ def init_reporting():
 #
 
 def update_insert_dispatcher(mode, db_obj, db_cur, dest_func, dest_args,
-                             dest_kwargs, new_key_cv, new_value_cv):
+                             dest_kwargs, new_key_cv, new_value_cv,
+                             no_replicate=False):
 
     """
     Call database query functions separately for each value_cv tuple.
@@ -1182,6 +1196,8 @@ def update_insert_dispatcher(mode, db_obj, db_cur, dest_func, dest_args,
                       with the new values inserted into the tuples,
                       but with only tuples needing to be updated /
                       inserted included
+        no_replicate: if true, turn off replication on the destination
+                      database before making any changes
 
     Dependencies:
         functions: (contents of dest_func)
@@ -1198,6 +1214,17 @@ def update_insert_dispatcher(mode, db_obj, db_cur, dest_func, dest_args,
         nori.core.status_logger.info(
             'Inserting into destination database...'
         )
+
+    # turn off replication?
+    dest_replication = None
+    if no_replicate:
+        nori.core.status_logger.info(
+            'Turning off database replication for this session before '
+            'making changes\nfor this template...'
+        )
+        dest_replication = db_obj.replication(db_cur, None)
+        db_obj.replication(db_cur, False)
+        nori.core.status_logger.info('Replication is now off.')
 
     # call query function once for each column
     fulls = 0
@@ -1245,32 +1272,45 @@ probably required.
 
     # handle missing rows
     if not redo_value_cv:
-        return status
-    nori.core.status_logger.info(
-        'However, some rows were missing and could not be updated;\n'
-        'inserting them now.'
-    )
-    redo_status = update_insert_dispatcher(
-        'insert', db_obj, db_cur, dest_func, dest_args, dest_kwargs,
-        new_key_cv, redo_value_cv
-    )
-    if redo_status is None:
-        if status is None:
-            return None
-        else:
-            return False
-    elif not redo_status:
-        return False
+        ui_ret = status
     else:
-        if status:
-            return True
+        nori.core.status_logger.info(
+            'However, some rows were missing and could not be updated;\n'
+            'inserting them now.'
+        )
+        # note: replication is already being handled
+        redo_status = update_insert_dispatcher(
+            'insert', db_obj, db_cur, dest_func, dest_args, dest_kwargs,
+            new_key_cv, redo_value_cv, False
+        )
+        if redo_status is None:
+            if status is None:
+                ui_ret = None
+            else:
+                ui_ret = False
+        elif not redo_status:
+            ui_ret = False
         else:
-            return False
+            if status:
+                ui_ret = True
+            else:
+                ui_ret = False
+
+    # restore replication
+    if no_replicate:
+        nori.core.status_logger.info(
+            'Restoring database replication for this session to its '
+            'previous state...'
+        )
+        db_obj.replication(db_cur, dest_replication)
+        nori.core.status_logger.info('Replication has been restored.')
+
+    return ui_ret
 
 
 def generic_db_query(db_obj, db_cur, mode, tables, key_cv, value_cv,
                      where_str=None, where_args=[], more_str=None,
-                     more_args=[], no_replicate=False):
+                     more_args=[]):
 
     """
     Generic 'DB query function' for use in templates.
@@ -1306,9 +1346,6 @@ def generic_db_query(db_obj, db_cur, mode, tables, key_cv, value_cv,
         more_args: a list of values to supply along with the database
                    query for interpolation into the query string; only
                    needed if there are placeholders in more_str
-        no_replicate: if True, attempt to turn off replication during
-                      the query; failure will cause a warning, but won't
-                      prevent the query from proceeding
 
     Dependencies:
         functions: generic_db_read(), generic_db_update(),
@@ -1331,12 +1368,11 @@ generic_db_query(db_obj={0},
                  where_str={6},
                  where_args={7},
                  more_str={8},
-                 more_args={9},
-                 no_replicate={10})
+                 more_args={9})
 
 Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, mode, tables, key_cv,
                                    value_cv, where_str, where_args,
-                                   more_str, more_args, no_replicate]))
+                                   more_str, more_args]))
         )
         sys.exit(nori.core.exitvals['internal']['num'])
 
@@ -1346,11 +1382,11 @@ Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, mode, tables, key_cv,
 
     if mode == 'update':
         return generic_db_update(db_obj, db_cur, tables, key_cv, value_cv,
-                                 where_str, where_args, no_replicate)
+                                 where_str, where_args)
 
     if mode == 'insert':
         return generic_db_insert(db_obj, db_cur, tables, key_cv, value_cv,
-                                 where_str, where_args, no_replicate)
+                                 where_str, where_args)
 
 
 def generic_db_read(db_obj, db_cur, tables, key_cv, value_cv,
@@ -1407,7 +1443,7 @@ def generic_db_read(db_obj, db_cur, tables, key_cv, value_cv,
 
 
 def generic_db_update(db_obj, db_cur, tables, key_cv, value_cv,
-                      where_str=None, where_args=[], no_replicate=False):
+                      where_str=None, where_args=[]):
 
     """
     Do the actual work for generic DB updates.
@@ -1434,11 +1470,10 @@ generic_db_update(db_obj={0},
                   key_cv={3},
                   value_cv={4},
                   where_str={5},
-                  where_args={6},
-                  no_replicate={7})
+                  where_args={6})
 
 Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, tables, key_cv, value_cv,
-                                   where_str, where_args, no_replicate]))
+                                   where_str, where_args]))
         )
         sys.exit(nori.core.exitvals['internal']['num'])
 
@@ -1469,7 +1504,7 @@ Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, tables, key_cv, value_cv,
 
 
 def generic_db_insert(db_obj, db_cur, tables, key_cv, value_cv,
-                      where_str=None, where_args=[], no_replicate=False):
+                      where_str=None, where_args=[]):
 
     """
     Do the actual work for generic DB inserts.
@@ -1496,11 +1531,10 @@ generic_db_update(db_obj={0},
                   key_cv={3},
                   value_cv={4},
                   where_str={5},
-                  where_args={6},
-                  no_replicate={7})
+                  where_args={6})
 
 Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, tables, key_cv, value_cv,
-                                   where_str, where_args, no_replicate]))
+                                   where_str, where_args]))
         )
         sys.exit(nori.core.exitvals['internal']['num'])
 
@@ -1528,8 +1562,7 @@ Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, tables, key_cv, value_cv,
     return None if not ret else True
 
 
-def drupal_db_query(db_obj, db_cur, mode, key_cv, value_cv,
-                    no_replicate=False):
+def drupal_db_query(db_obj, db_cur, mode, key_cv, value_cv):
 
     """
     Drupal 'DB query function' for use in templates.
@@ -1649,12 +1682,10 @@ def drupal_db_query(db_obj, db_cur, mode, key_cv, value_cv,
                   above)
                   * in 'update' and 'insert' modes, the value_cv
                     sequence must contain exactly one tuple
-        no_replicate: if True, attempt to turn off replication during
-                      the query; failure will cause a warning, but won't
-                      prevent the query from proceeding
 
     Dependencies:
-        functions: drupal_db_read(), drupal_db_update()
+        functions: drupal_db_read(), drupal_db_update(),
+                   drupal_db_insert()
         modules: sys, itertools, nori
 
     """
@@ -1668,11 +1699,10 @@ drupal_db_query(db_obj={0},
                 db_cur={1},
                 mode={2},
                 key_cv={3},
-                value_cv={4},
-                no_replicate={5})
+                value_cv={4})
 
-Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, mode, key_cv, value_cv,
-                                   no_replicate]))
+Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, mode, key_cv,
+                                   value_cv]))
         )
         sys.exit(nori.core.exitvals['internal']['num'])
 
@@ -1758,12 +1788,10 @@ Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, mode, key_cv, value_cv,
         return full_rows
 
     if mode == 'update':
-        return drupal_db_update(db_obj, db_cur, key_cv, value_cv,
-                                no_replicate)
+        return drupal_db_update(db_obj, db_cur, key_cv, value_cv)
 
     if mode == 'insert':
-        return drupal_db_insert(db_obj, db_cur, key_cv, value_cv,
-                                no_replicate)
+        return drupal_db_insert(db_obj, db_cur, key_cv, value_cv)
 
 
 def drupal_db_read(db_obj, db_cur, key_cv, value_cv):
@@ -2366,7 +2394,7 @@ ORDER BY node.title, node.nid, fcf.delta, {11}
     return ret[1]
 
 
-def drupal_db_update(db_obj, db_cur, key_cv, value_cv, no_replicate=False):
+def drupal_db_update(db_obj, db_cur, key_cv, value_cv):
 
     """
     Do the actual work for generic Drupal DB updates.
@@ -2394,11 +2422,9 @@ drupal_db_update(); call was (in expanded notation):
 drupal_db_update(db_obj={0},
                  db_cur={1},
                  key_cv={2},
-                 value_cv={3},
-                 no_replicate={4})
+                 value_cv={3})
 
-Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, key_cv, value_cv,
-                                   no_replicate]))
+Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, key_cv, value_cv]))
         )
         sys.exit(nori.core.exitvals['internal']['num'])
 
@@ -2412,11 +2438,9 @@ drupal_db_update(); call was (in expanded notation):
 drupal_db_update(db_obj={0},
                  db_cur={1},
                  key_cv={2},
-                 value_cv={3},
-                 no_replicate={4})
+                 value_cv={3})
 
-Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, key_cv, value_cv,
-                                   no_replicate]))
+Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, key_cv, value_cv]))
         )
         sys.exit(nori.core.exitvals['internal']['num'])
 
@@ -2951,7 +2975,7 @@ Skipping timestamp update.''' .
     return True
 
 
-def drupal_db_insert(db_obj, db_cur, key_cv, value_cv, no_replicate=False):
+def drupal_db_insert(db_obj, db_cur, key_cv, value_cv):
 
     """
     Do the actual work for generic Drupal DB inserts.
@@ -2978,11 +3002,9 @@ drupal_db_insert(); call was (in expanded notation):
 drupal_db_insert(db_obj={0},
                  db_cur={1},
                  key_cv={2},
-                 value_cv={3},
-                 no_replicate={4})
+                 value_cv={3})
 
-Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, key_cv, value_cv,
-                                   no_replicate]))
+Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, key_cv, value_cv]))
         )
         sys.exit(nori.core.exitvals['internal']['num'])
 
@@ -2996,11 +3018,9 @@ drupal_db_insert(); call was (in expanded notation):
 drupal_db_insert(db_obj={0},
                  db_cur={1},
                  key_cv={2},
-                 value_cv={3},
-                 no_replicate={4})
+                 value_cv={3})
 
-Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, key_cv, value_cv,
-                                   no_replicate]))
+Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, key_cv, value_cv]))
         )
         sys.exit(nori.core.exitvals['internal']['num'])
 
@@ -4882,12 +4902,14 @@ def do_sync(t_index, s_row, d_row, d_db, d_cur, diff_k, diff_i):
         dest_func = template[T_D_QUERY_FUNC_IDX]
         dest_args = template[T_D_QUERY_ARGS_IDX][0]
         dest_kwargs = template[T_D_QUERY_ARGS_IDX][1]
+        dest_no_repl = template[T_D_NO_REPL_IDX]
         dest_change_func = template[T_D_CHANGE_FUNC_IDX]
     else:
         dest_type = nori.core.cfg['sourcedb_type']
         dest_func = template[T_S_QUERY_FUNC_IDX]
         dest_args = template[T_S_QUERY_ARGS_IDX][0]
         dest_kwargs = template[T_S_QUERY_ARGS_IDX][1]
+        dest_no_repl = template[T_S_NO_REPL_IDX]
         dest_change_func = template[T_S_CHANGE_FUNC_IDX]
     mode = 'insert' if t_multiple else 'update'
 
@@ -4913,7 +4935,7 @@ skipping this {0}.""".format(mode)
     global_callback_needed = False
     status = update_insert_dispatcher(
         mode, d_db, d_cur, dest_func, dest_args, dest_kwargs, new_key_cv,
-        new_value_cv
+        new_value_cv, dest_no_repl
     )
     if status is not None:
         global_callback_needed = True

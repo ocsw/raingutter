@@ -35,8 +35,6 @@ update timestamp on previous node when updating n->r->n?
 
 remove cursors?
 
-no_replicate (SET sql_log_bin=0/1; but - check/store)
-
 generic_db_insert
 
 deletes, e.g. if source is NULL and dest isn't
