@@ -2,6 +2,8 @@
 
 import math
 
+templates = []
+
 ##################### single-valued direct fields ######################
 
 def os_strings(osname, osversion):
@@ -37,7 +39,7 @@ def single_direct_to_drupal(template, row):
             new_row[i] = None
     return (orig_num_keys, tuple(new_row))
 
-cfg['templates'].append(dict(
+templates.append(dict(
     name='single-valued direct fields',
     source_query_func_args=([], dict(
         tables=(
@@ -99,7 +101,7 @@ AND (memories.CAPACITY <> 0 OR memories.CAPACITY IS NULL)"""
 
 ########################### default gateway ############################
 
-cfg['templates'].append(dict(
+templates.append(dict(
     name='default gateway',
     source_query_func_args=([], dict(
         tables=(
@@ -157,7 +159,7 @@ def dimms_to_drupal(template, row):
             new_row[i] = None
     return ((orig_num_keys + 1), tuple(new_row))
 
-cfg['templates'].append(dict(
+templates.append(dict(
     name='DIMMs',
     source_query_func_args=([], dict(
         tables=(
@@ -225,7 +227,7 @@ def volumes_to_drupal(template, row):
             new_row[i] = None
     return ((orig_num_keys + 1), tuple(new_row))
 
-cfg['templates'].append(dict(
+templates.append(dict(
     name='volumes',
     source_query_func_args=([], dict(
         tables=(
@@ -289,7 +291,7 @@ def ports_to_drupal(template, row):
             new_row[i] = None
     return ((orig_num_keys + 1), tuple(new_row))
 
-cfg['templates'].append(dict(
+templates.append(dict(
     name='ports: main',
     source_query_func_args=([], dict(
         tables=(
@@ -349,7 +351,7 @@ def ips_to_drupal(template, row):
             new_row[i] = None
     return ((orig_num_keys + 1), tuple(new_row))
 
-cfg['templates'].append(dict(
+templates.append(dict(
     name='ports: IPs',
     multiple_values=True,
     source_query_func_args=([], dict(
@@ -394,7 +396,7 @@ AND networks.IPADDRESS <> ''"""
 
 ############################### IP view ################################
 
-cfg['templates'].append(dict(
+templates.append(dict(
     name='IP view',
     multiple_values=True,
     source_query_func_args=([], dict(
@@ -484,7 +486,7 @@ def software_to_drupal(template, row):
             new_row[i] = None
     return ((orig_num_keys + 1), tuple(new_row))
 
-cfg['templates'].append(dict(
+templates.append(dict(
     name='software versions',
     source_query_func_args=([], dict(
         tables=(
