@@ -74,5 +74,11 @@ from .core import *
 #                           RUN STANDALONE
 ########################################################################
 
+<<<<<<< HEAD
+=======
+def main():
+    process_command_line()
+
+>>>>>>> 635a003e8cc032c8bae87217e15a0a0b3b278a9b
 if __name__ == '__main__':
     main()
