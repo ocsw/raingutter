@@ -2,9 +2,8 @@
 
 
 """
-This is the raingutter database diff and sync tool.  It can handle
-general MySQL databases, but is particularly designed to handle
-getting data into and out of Drupal 7 databases.
+This is the core module for the raingutter database diff and sync tool;
+see __main__.py for license and usage information.
 """
 
 
