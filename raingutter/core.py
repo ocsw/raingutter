@@ -1287,9 +1287,10 @@ def init_reporting():
 # higher-level functions explain what's going on)
 #
 
-def update_insert_dispatcher(mode, db_obj, db_cur, dest_func, dest_args,
-                             dest_kwargs, new_key_cv, new_value_cv,
-                             no_replicate=False):
+def update_insert_dispatcher(mode, db_obj, db_cur, dest_type, dest_func,
+                             dest_args, dest_kwargs, new_key_cv,
+                             new_value_cv, no_replicate=False,
+                             no_timestamps=False):
 
     """
     Call database query functions separately for each value_cv tuple.
@@ -1303,6 +1304,8 @@ def update_insert_dispatcher(mode, db_obj, db_cur, dest_func, dest_args,
         mode: 'read', 'update', or 'insert'
         db_obj: the database connection object to use
         db_cur: the database cursor object to use
+        dest_type: the type of the destination database ('generic' or
+                   'drupal')
         dest_func: the query function to use
         dest_args: the list of positional parameters to supply to the
                    query function, from the appropriate template
@@ -1316,6 +1319,8 @@ def update_insert_dispatcher(mode, db_obj, db_cur, dest_func, dest_args,
                       inserted included
         no_replicate: if true, turn off replication on the destination
                       database before making any changes
+        no_timestamps: if true, don't update Drupal timestamps after
+                       making database changes
 
     Dependencies:
         functions: (contents of dest_func)
@@ -1396,10 +1401,10 @@ probably required.
             'However, some rows were missing and could not be updated;\n'
             'inserting them now.'
         )
-        # note: replication is already being handled
+        # note: replication and timestamps are already being handled
         redo_status = update_insert_dispatcher(
-            'insert', db_obj, db_cur, dest_func, dest_args, dest_kwargs,
-            new_key_cv, redo_value_cv, False
+            'insert', db_obj, db_cur, dest_type, dest_func, dest_args,
+            dest_kwargs, new_key_cv, redo_value_cv, False, False
         )
         if redo_status is None:
             if status is None:
@@ -1413,6 +1418,12 @@ probably required.
                 ui_ret = True
             else:
                 ui_ret = False
+
+    # update timestamps
+    if (ui_ret is not None and dest_type == 'drupal' and
+          not no_timestamps):
+        drupal_db_update_timestamps(db_obj, db_cur, new_key_cv,
+                                    new_value_cv)
 
     # restore replication
     if no_replicate:
@@ -2964,132 +2975,6 @@ AND f.deleted = 0
     db_obj.autocommit(db_ac)
     if not ret:
         return None
-
-    if db_cur.rowcount == 0:
-        # nothing was actually updated, don't worry about timestamps
-        # (not only shouldn't they be updated, it would mess up the
-        # value of db_cur.rowcount, which the dispatcher needs)
-        return True
-
-    ###################### update the timestamps #######################
-
-    def wrap_get_drupal_node_ids(db_obj, db_cur, node_cv, descr):
-        """Get node IDs or exit with an error."""
-
-        # node details
-        node_ident = node_cv[0]
-        node_value_type = node_cv[1]
-        node_value = node_cv[2]
-        node_type = node_ident[1]
-        node_id_type = node_ident[2]
-
-        # get the IDs
-        ret = get_drupal_node_ids(db_obj, db_cur, node_cv)
-        if not ret:  # including None
-            nori.core.email_logger.error(
-'''Warning: could not get the IDs of the following {0} node:
-    node_type: {1}
-    node_id_type: {2}
-    node_value: {3}
-Skipping timestamp update.''' .
-                format(descr, *map(nori.pps, [node_type, node_id_type,
-                                              node_value]))
-            )
-            return None
-        # we may eventually want to / be able to handle multiple rows
-        # here, but for now just take the first one
-        return ret[0]
-
-    def wrap_get_drupal_relation_ids(db_obj, db_cur, node1_nid,
-                                     relation_type, node2_nid):
-        """Get relation IDs or exit with an error."""
-        ret = get_drupal_relation_ids(db_obj, db_cur, 'node', node1_nid,
-                                      relation_type, 'node', node2_nid)
-        if not ret:  # including None
-            nori.core.email_logger.error(
-'''Warning: could not get the IDs of the {0} relation with
-the following endpoints:
-    node1_id: {1}
-    node2_id: {2}
-Skipping timestamp update.''' .
-                format(*map(nori.pps, [relation_type, node1_nid,
-                                       node2_nid]))
-            )
-            return None
-        # we may eventually want to / be able to handle multiple rows
-        # here, but for now just take the first one
-        return ret[0]
-
-    #
-    # node -> field (including term references)
-    #
-    if chain_type == 'n-f':
-        ret = wrap_get_drupal_node_ids(db_obj, db_cur, node_cv, 'parent')
-        if ret:
-            if not update_drupal_node_timestamp(db_obj, db_cur, ret[0],
-                                                ret[1]):
-                return False
-
-    #
-    # node -> relation -> node
-    #
-    elif chain_type == 'n-r-n':
-        k_ret = wrap_get_drupal_node_ids(db_obj, db_cur, k_node_cv,
-                                         'linked')
-        if k_ret:
-            if not update_drupal_node_timestamp(db_obj, db_cur, k_ret[0],
-                                                k_ret[1]):
-                return False
-
-        v_ret = wrap_get_drupal_node_ids(db_obj, db_cur, v_node_cv,
-                                         'linked')
-        if v_ret:
-            if not update_drupal_node_timestamp(db_obj, db_cur, v_ret[0],
-                                                v_ret[1]):
-                return False
-
-        if k_ret and v_ret:
-            r_ret = wrap_get_drupal_relation_ids(db_obj, db_cur, k_ret[0],
-                                                 relation_type, v_ret[0])
-            if r_ret:
-                if not update_drupal_relation_timestamp(db_obj, db_cur,
-                                                        r_ret[0], r_ret[1]):
-                    return False
-
-    #
-    # node -> relation & node -> relation_field (incl. term refs)
-    #
-    elif chain_type == 'n-rn-rf':
-        ret1 = wrap_get_drupal_node_ids(db_obj, db_cur, node1_cv, 'linked')
-        if ret1:
-            if not update_drupal_node_timestamp(db_obj, db_cur, ret1[0],
-                                                ret1[1]):
-                return False
-
-        ret2 = wrap_get_drupal_node_ids(db_obj, db_cur, node2_cv, 'linked')
-        if ret2:
-            if not update_drupal_node_timestamp(db_obj, db_cur, ret2[0],
-                                                ret2[1]):
-                return False
-
-        if ret1 and ret2:
-            r_ret = wrap_get_drupal_relation_ids(db_obj, db_cur, ret1[0],
-                                                 relation_type, ret2[0])
-            if r_ret:
-                if not update_drupal_relation_timestamp(db_obj, db_cur,
-                                                        r_ret[0], r_ret[1]):
-                    return False
-
-    #
-    # node -> fc -> field (including term references)
-    #
-    elif chain_type == 'n-fc-f':
-        ret = wrap_get_drupal_node_ids(db_obj, db_cur, node_cv, 'parent')
-        if ret:
-            if not update_drupal_node_timestamp(db_obj, db_cur, ret[0],
-                                                ret[1]):
-                return False
-
     return True
 
 
@@ -3498,6 +3383,137 @@ Skipping insert.''' .
         return True
 
 
+def drupal_db_update_timestamps(db_obj, db_cur, key_cv, value_cv):
+
+    """
+    Update Drupal timestamps; use after updates or inserts.
+
+    Returns True (success) / False (failure).
+
+    Parameters:
+        see drupal_db_query()
+
+    Dependencies:
+        functions: get_drupal_node_ids_timestamp(),
+                   update_drupal_node_timestamp(),
+                   get_drupal_relation_ids_timestamp(),
+                   update_drupal_relation_timestamp()
+
+    """
+
+    # get the chain type
+    chain_type = get_drupal_chain_type(key_cv, value_cv)
+    if not chain_type:
+        nori.core.email_logger.error(
+'''Internal Error: invalid field list supplied in call to
+drupal_db_update_timestamps(); call was (in expanded notation):
+
+drupal_db_update_timestamps(
+    db_obj={0},
+    db_cur={1},
+    key_cv={2},
+    value_cv={3}
+)
+
+Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, key_cv, value_cv]))
+        )
+        sys.exit(nori.core.exitvals['internal']['num'])
+
+    ###################### update the timestamps #######################
+
+    #
+    # node -> field (including term references)
+    #
+    if chain_type == 'n-f':
+        node_cv = key_cv[0]
+        ret = get_drupal_node_ids_timestamp(db_obj, db_cur, node_cv,
+                                            'parent')
+        if ret:
+            if not update_drupal_node_timestamp(db_obj, db_cur, ret[0],
+                                                ret[1]):
+                return False
+
+    #
+    # node -> relation -> node
+    #
+    elif chain_type == 'n-r-n':
+        k_node_cv = key_cv[0]
+        k_ret = get_drupal_node_ids_timestamp(db_obj, db_cur, k_node_cv,
+                                              'linked')
+        if k_ret:
+            if not update_drupal_node_timestamp(db_obj, db_cur, k_ret[0],
+                                                k_ret[1]):
+                return False
+
+        v_node_cv = value_cv[0]
+        v_ret = get_drupal_node_ids_timestamp(db_obj, db_cur, v_node_cv,
+                                              'linked')
+        if v_ret:
+            if not update_drupal_node_timestamp(db_obj, db_cur, v_ret[0],
+                                                v_ret[1]):
+                return False
+
+        if k_ret and v_ret:
+            relation_cv = key_cv[1]
+            relation_ident = relation_cv[0]
+            relation_type = relation_ident[1]
+            r_ret = get_drupal_relation_ids_timestamp(
+                db_obj, db_cur, 'node', k_ret[0], relation_type, 'node',
+                v_ret[0]
+            )
+            if r_ret:
+                if not update_drupal_relation_timestamp(db_obj, db_cur,
+                                                        r_ret[0], r_ret[1]):
+                    return False
+
+    #
+    # node -> relation & node -> relation_field (incl. term refs)
+    #
+    elif chain_type == 'n-rn-rf':
+        node1_cv = key_cv[0]
+        ret1 = get_drupal_node_ids_timestamp(db_obj, db_cur, node1_cv,
+                                             'linked')
+        if ret1:
+            if not update_drupal_node_timestamp(db_obj, db_cur, ret1[0],
+                                                ret1[1]):
+                return False
+
+        node2_cv = key_cv[2]
+        ret2 = get_drupal_node_ids_timestamp(db_obj, db_cur, node2_cv,
+                                             'linked')
+        if ret2:
+            if not update_drupal_node_timestamp(db_obj, db_cur, ret2[0],
+                                                ret2[1]):
+                return False
+
+        if ret1 and ret2:
+            relation_cv = key_cv[1]
+            relation_ident = relation_cv[0]
+            relation_type = relation_ident[1]
+            r_ret = get_drupal_relation_ids_timestamp(
+                db_obj, db_cur, 'node', ret1[0], relation_type, 'node',
+                ret2[0]
+            )
+            if r_ret:
+                if not update_drupal_relation_timestamp(db_obj, db_cur,
+                                                        r_ret[0], r_ret[1]):
+                    return False
+
+    #
+    # node -> fc -> field (including term references)
+    #
+    elif chain_type == 'n-fc-f':
+        node_cv = key_cv[0]
+        ret = get_drupal_node_ids_timestamp(db_obj, db_cur, node_cv,
+                                            'parent')
+        if ret:
+            if not update_drupal_node_timestamp(db_obj, db_cur, ret[0],
+                                                ret[1]):
+                return False
+
+    return True
+
+
 #
 # Note: even if we got some of the info the functions below retrieve
 # when we did the original SELECTs, it's possible for one template
@@ -3562,6 +3578,46 @@ AND {0} = %s
     return ret[1]
 
 
+def get_drupal_node_ids_timestamp(db_obj, db_cur, node_cv, descr):
+
+    """
+    Wrapper: get node IDs for timestamp update or exit with an error.
+
+    Parameters:
+        descr: what sort of node this is, e.g. 'parent' or 'linked'
+        see get_drupal_node_ids() for the rest
+
+    Dependencies:
+        functions: get_drupal_node_ids()
+        modules: nori
+
+    """
+
+    # node details
+    node_ident = node_cv[0]
+    node_value_type = node_cv[1]
+    node_value = node_cv[2]
+    node_type = node_ident[1]
+    node_id_type = node_ident[2]
+
+    # get the IDs
+    ret = get_drupal_node_ids(db_obj, db_cur, node_cv)
+    if not ret:  # including None
+        nori.core.email_logger.error(
+'''Warning: could not get the IDs of the following {0} node:
+node_type: {1}
+node_id_type: {2}
+node_value: {3}
+Skipping timestamp update.''' .
+            format(descr, *map(nori.pps, [node_type, node_id_type,
+                                          node_value]))
+        )
+        return None
+    # we may eventually want to / be able to handle multiple rows
+    # here, but for now just take the first one
+    return ret[0]
+
+
 def get_drupal_relation_ids(db_obj, db_cur, e1_entity_type, e1_entity_id,
                             relation_type, e2_entity_type, e2_entity_id):
 
@@ -3620,6 +3676,43 @@ AND e2.deleted = 0
     if not ret[1]:
         return []
     return ret[1]
+
+
+def get_drupal_relation_ids_timestamp(db_obj, db_cur, e1_entity_type,
+                                      e1_entity_id, relation_type,
+                                      e2_entity_type, e2_entity_id):
+
+    """
+    Wrapper: get relation IDs for timestamp or exit with an error.
+
+    Parameters:
+        see get_drupal_relation_ids()
+
+    Dependencies:
+        functions: get_drupal_relation_ids()
+        modules: nori
+
+    """
+    ret = get_drupal_relation_ids(db_obj, db_cur, e1_entity_type,
+                                  e1_entity_id, relation_type,
+                                  e2_entity_type, e2_entity_id)
+    if not ret:  # including None
+        nori.core.email_logger.error(
+'''Warning: could not get the IDs of the {0} relation with
+the following endpoints:
+endpoint1 type: {1}
+endpoint1 id: {2}
+endpoint2 type: {3}
+endpoint2 id: {4}
+Skipping timestamp update.''' .
+            format(*map(nori.pps, [relation_type, e1_entity_type,
+                                   e1_entity_id, e2_entity_type,
+                                   e2_entity_id]))
+        )
+        return None
+    # we may eventually want to / be able to handle multiple rows
+    # here, but for now just take the first one
+    return ret[0]
 
 
 def get_drupal_fc_ids(db_obj, db_cur, entity_type, bundle, entity_id,
@@ -5044,8 +5137,8 @@ skipping this {0}.""".format(mode)
     # do the updates / inserts
     global_callback_needed = False
     status = update_insert_dispatcher(
-        mode, d_db, d_cur, dest_func, dest_args, dest_kwargs, new_key_cv,
-        new_value_cv, dest_no_repl
+        mode, d_db, d_cur, dest_type, dest_func, dest_args, dest_kwargs,
+        new_key_cv, new_value_cv, dest_no_repl
     )
     if status is not None:
         global_callback_needed = True
