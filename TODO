@@ -13,6 +13,7 @@ NULLs in source as part of multi-field template
 OCS:
     crontabs
     software: ubuntu; ssh, ssl, postfix, bind, wowza, adobe
+    OS version
     search path?
     nameservers?
     firewall?
@@ -41,7 +42,7 @@ handle interpreting drupal field defaults
 
 check min/max, other constraints when adding fields (including defaults)
 
-docstring / USAGE / mod notes re chains, phpserialize
+docstring / USAGE / mod notes re chains
 more examples/sql, esp for drupal?
 
 error handling: exit/skip?
