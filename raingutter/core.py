@@ -1488,16 +1488,18 @@ def generic_db_query(db_obj, db_cur, mode, tables, key_cv, value_cv,
 '''Internal Error: invalid mode supplied in call to generic_db_query();
 call was (in expanded notation):
 
-generic_db_query(db_obj={0},
-                 db_cur={1},
-                 mode={2},
-                 tables={3},
-                 key_cv={4},
-                 value_cv={5},
-                 where_str={6},
-                 where_args={7},
-                 more_str={8},
-                 more_args={9})
+generic_db_query(
+    db_obj={0},
+    db_cur={1},
+    mode={2},
+    tables={3},
+    key_cv={4},
+    value_cv={5},
+    where_str={6},
+    where_args={7},
+    more_str={8},
+    more_args={9}
+)
 
 Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, mode, tables, key_cv,
                                    value_cv, where_str, where_args,
@@ -1593,13 +1595,15 @@ def generic_db_update(db_obj, db_cur, tables, key_cv, value_cv,
 '''Internal Error: multiple value_cv entries supplied in call to
 generic_db_update(); call was (in expanded notation):
 
-generic_db_update(db_obj={0},
-                  db_cur={1},
-                  tables={2},
-                  key_cv={3},
-                  value_cv={4},
-                  where_str={5},
-                  where_args={6})
+generic_db_update(
+    db_obj={0},
+    db_cur={1},
+    tables={2},
+    key_cv={3},
+    value_cv={4},
+    where_str={5},
+    where_args={6}
+)
 
 Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, tables, key_cv, value_cv,
                                    where_str, where_args]))
@@ -1652,15 +1656,17 @@ def generic_db_insert(db_obj, db_cur, tables, key_cv, value_cv,
     if len(value_cv) != 1:
         nori.core.email_logger.error(
 '''Internal Error: multiple value_cv entries supplied in call to
-generic_db_update(); call was (in expanded notation):
+generic_db_insert(); call was (in expanded notation):
 
-generic_db_update(db_obj={0},
-                  db_cur={1},
-                  tables={2},
-                  key_cv={3},
-                  value_cv={4},
-                  where_str={5},
-                  where_args={6})
+generic_db_insert(
+    db_obj={0},
+    db_cur={1},
+    tables={2},
+    key_cv={3},
+    value_cv={4},
+    where_str={5},
+    where_args={6}
+)
 
 Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, tables, key_cv, value_cv,
                                    where_str, where_args]))
@@ -1824,11 +1830,13 @@ def drupal_db_query(db_obj, db_cur, mode, key_cv, value_cv):
 '''Internal Error: invalid mode supplied in call to
 drupal_db_query(); call was (in expanded notation):
 
-drupal_db_query(db_obj={0},
-                db_cur={1},
-                mode={2},
-                key_cv={3},
-                value_cv={4})
+drupal_db_query(
+    db_obj={0},
+    db_cur={1},
+    mode={2},
+    key_cv={3},
+    value_cv={4}
+)
 
 Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, mode, key_cv,
                                    value_cv]))
@@ -1949,10 +1957,12 @@ def drupal_db_read(db_obj, db_cur, key_cv, value_cv):
 '''Internal Error: invalid field list supplied in call to
 drupal_db_read(); call was (in expanded notation):
 
-drupal_db_read(db_obj={0},
-               db_cur={1},
-               key_cv={2},
-               value_cv={3})
+drupal_db_read(
+    db_obj={0},
+    db_cur={1},
+    key_cv={2},
+    value_cv={3}
+)
 
 Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, key_cv, value_cv]))
         )
@@ -2548,10 +2558,12 @@ def drupal_db_update(db_obj, db_cur, key_cv, value_cv):
 '''Internal Error: multiple value_cv entries supplied in call to
 drupal_db_update(); call was (in expanded notation):
 
-drupal_db_update(db_obj={0},
-                 db_cur={1},
-                 key_cv={2},
-                 value_cv={3})
+drupal_db_update(
+    db_obj={0},
+    db_cur={1},
+    key_cv={2},
+    value_cv={3}
+)
 
 Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, key_cv, value_cv]))
         )
@@ -2564,10 +2576,12 @@ Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, key_cv, value_cv]))
 '''Internal Error: invalid field list supplied in call to
 drupal_db_update(); call was (in expanded notation):
 
-drupal_db_update(db_obj={0},
-                 db_cur={1},
-                 key_cv={2},
-                 value_cv={3})
+drupal_db_update(
+    db_obj={0},
+    db_cur={1},
+    key_cv={2},
+    value_cv={3}
+)
 
 Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, key_cv, value_cv]))
         )
@@ -3002,10 +3016,12 @@ def drupal_db_insert(db_obj, db_cur, key_cv, value_cv):
 '''Internal Error: multiple value_cv entries supplied in call to
 drupal_db_insert(); call was (in expanded notation):
 
-drupal_db_insert(db_obj={0},
-                 db_cur={1},
-                 key_cv={2},
-                 value_cv={3})
+drupal_db_insert(
+    db_obj={0},
+    db_cur={1},
+    key_cv={2},
+    value_cv={3}
+)
 
 Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, key_cv, value_cv]))
         )
@@ -3018,10 +3034,12 @@ Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, key_cv, value_cv]))
 '''Internal Error: invalid field list supplied in call to
 drupal_db_insert(); call was (in expanded notation):
 
-drupal_db_insert(db_obj={0},
-                 db_cur={1},
-                 key_cv={2},
-                 value_cv={3})
+drupal_db_insert(
+    db_obj={0},
+    db_cur={1},
+    key_cv={2},
+    value_cv={3}
+)
 
 Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, key_cv, value_cv]))
         )
