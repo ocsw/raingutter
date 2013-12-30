@@ -19,6 +19,8 @@ DOCSTRING CONTENTS:
     The script requires Python 2.7/3.2, and will exit (with an error
     message) if this requirement is not met.
 
+    For Drupal databases, the phpserialize module is also required.
+
 
 2) GENERAL INFORMATION:
 -----------------------
@@ -26,6 +28,8 @@ DOCSTRING CONTENTS:
     Many aspects of the script are self-documenting; to get information,
     options can be supplied to the package:
         python -m raingutter OPTIONS
+    or to the wrapper script:
+        raingutter OPTIONS
 
     For command-line usage information, run with '--help'.
 
@@ -74,11 +78,5 @@ from .core import *
 #                           RUN STANDALONE
 ########################################################################
 
-<<<<<<< HEAD
-=======
-def main():
-    process_command_line()
-
->>>>>>> 635a003e8cc032c8bae87217e15a0a0b3b278a9b
 if __name__ == '__main__':
-    main()
+    main()  # in core.py
