@@ -250,7 +250,11 @@ INNER JOIN drives ON drives.HARDWARE_ID = hardware.ID'''
     (SELECT max(hardware.ID)
      FROM hardware
      LEFT JOIN accountinfo ON accountinfo.HARDWARE_ID = hardware.ID
-     GROUP BY accountinfo.TAG)"""
+     GROUP BY accountinfo.TAG)
+AND drives.FILESYSTEM <> 'nfs'
+AND drives.FILESYSTEM <> 'NFS'
+AND drives.FILESYSTEM <> 'smb'
+AND drives.FILESYSTEM <> 'SMB'"""
         ),
         where_args=[],
         more_str='ORDER BY accountinfo.TAG',
