@@ -2148,11 +2148,11 @@ ORDER BY node.title, node.nid, {7}
                 )
             elif relation_value_type == 'ip':
                 relation_key_column = (
-                    'k_rf.field_{0}_start,'.format(relation_field_name)
+                    'k_rf.field_{0}_start'.format(relation_field_name)
                 )
             else:
                 relation_key_column = (
-                    'k_rf.field_{0}_value,'.format(relation_field_name)
+                    'k_rf.field_{0}_value'.format(relation_field_name)
                 )
 
             # handle specified field value
@@ -2315,11 +2315,11 @@ ORDER BY k_node.title, k_node.nid, e1.entity_id, v_node.title, v_node.nid
                 )
             elif relation_value_type == 'ip':
                 relation_key_column = (
-                    'k_rf.field_{0}_start,'.format(relation_field_name)
+                    'k_rf.field_{0}_start'.format(relation_field_name)
                 )
             else:
                 relation_key_column = (
-                    'k_rf.field_{0}_value,'.format(relation_field_name)
+                    'k_rf.field_{0}_value'.format(relation_field_name)
                 )
 
             # handle specified field value
@@ -2455,7 +2455,7 @@ AND node2.type = %s
 {11}
 {12}
 {13}
-ORDER BY k_node.title, k_node.nid, e1.entity_id, {14}
+ORDER BY node1.title, node1.nid, e1.entity_id, {14}
 ''' .
             format(node1_key_column,
                    (relation_key_column + ', ') if relation_key_column
@@ -2829,13 +2829,6 @@ AND f.deleted = 0
                 format(relation_field_name)
             )
 
-            # conditions
-            relation_field_cond = (
-                "AND k_rf.entity_type = 'relation'\n"
-                "AND {0} = %s\n"
-                "AND k_rf.deleted = 0".format(relation_key_column)
-            )
-
             # handle value type
             if relation_value_type.startswith('term: '):
                 relation_key_column = 'k_rf_t.name'
@@ -2846,12 +2839,19 @@ AND f.deleted = 0
                 )
             elif relation_value_type == 'ip':
                 relation_key_column = (
-                    'k_rf.field_{0}_start,'.format(relation_field_name)
+                    'k_rf.field_{0}_start'.format(relation_field_name)
                 )
             else:
                 relation_key_column = (
-                    'k_rf.field_{0}_value,'.format(relation_field_name)
+                    'k_rf.field_{0}_value'.format(relation_field_name)
                 )
+
+            # conditions
+            relation_field_cond = (
+                "AND k_rf.entity_type = 'relation'\n"
+                "AND {0} = %s\n"
+                "AND k_rf.deleted = 0".format(relation_key_column)
+            )
 
         # value-node details
         v_node_cv = value_cv[0]
@@ -2959,13 +2959,6 @@ AND {4} = %s
                 format(relation_field_name)
             )
 
-            # conditions
-            relation_field_cond = (
-                "AND k_rf.entity_type = 'relation'\n"
-                "AND {0} = %s\n"
-                "AND k_rf.deleted = 0".format(relation_key_column)
-            )
-
             # handle value type
             if relation_value_type.startswith('term: '):
                 relation_key_column = 'k_rf_t.name'
@@ -2976,12 +2969,19 @@ AND {4} = %s
                 )
             elif relation_value_type == 'ip':
                 relation_key_column = (
-                    'k_rf.field_{0}_start,'.format(relation_field_name)
+                    'k_rf.field_{0}_start'.format(relation_field_name)
                 )
             else:
                 relation_key_column = (
-                    'k_rf.field_{0}_value,'.format(relation_field_name)
+                    'k_rf.field_{0}_value'.format(relation_field_name)
                 )
+
+            # conditions
+            relation_field_cond = (
+                "AND k_rf.entity_type = 'relation'\n"
+                "AND {0} = %s\n"
+                "AND k_rf.deleted = 0".format(relation_key_column)
+            )
 
         # node2 details
         node2_cv = key_cv[2]
@@ -3714,10 +3714,8 @@ Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, key_cv, value_cv]))
 
         if k_ret and v_ret:
             relation_cv = key_cv[1]
-            relation_ident = relation_cv[0]
-            relation_type = relation_ident[1]
             r_ret = get_drupal_relation_ids_timestamp(
-                db_obj, db_cur, 'node', k_ret[0], relation_type, 'node',
+                db_obj, db_cur, 'node', k_ret[0], relation_cv, 'node',
                 v_ret[0]
             )
             if r_ret:
@@ -3747,10 +3745,8 @@ Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, key_cv, value_cv]))
 
         if ret1 and ret2:
             relation_cv = key_cv[1]
-            relation_ident = relation_cv[0]
-            relation_type = relation_ident[1]
             r_ret = get_drupal_relation_ids_timestamp(
-                db_obj, db_cur, 'node', ret1[0], relation_type, 'node',
+                db_obj, db_cur, 'node', ret1[0], relation_cv, 'node',
                 ret2[0]
             )
             if r_ret:
@@ -3901,7 +3897,6 @@ def get_drupal_relation_ids(db_obj, db_cur, e1_entity_type, e1_entity_id,
     """
 
     # relation details
-    relation_cv = key_cv[1]
     relation_ident = relation_cv[0]
     relation_type = relation_ident[1]
 
@@ -3937,11 +3932,11 @@ def get_drupal_relation_ids(db_obj, db_cur, e1_entity_type, e1_entity_id,
             )
         elif relation_value_type == 'ip':
             relation_key_column = (
-                'k_rf.field_{0}_start,'.format(relation_field_name)
+                'k_rf.field_{0}_start'.format(relation_field_name)
             )
         else:
             relation_key_column = (
-                'k_rf.field_{0}_value,'.format(relation_field_name)
+                'k_rf.field_{0}_value'.format(relation_field_name)
             )
 
         # handle specified field value
@@ -4013,7 +4008,6 @@ def get_drupal_relation_ids_timestamp(db_obj, db_cur, e1_entity_type,
     """
 
     # relation details
-    relation_cv = key_cv[1]
     relation_ident = relation_cv[0]
     relation_type = relation_ident[1]
     if len(relation_ident) > 2:
@@ -4248,7 +4242,7 @@ AND fc.deleted = 0
     if 'phpserialize' not in sys.modules:
         nori.core.email_logger.error(
 '''Warning: there are defaults for Drupal fields under entity type
-{0) and bundle {1}, but the 'phpserialize' module
+{0} and bundle {1}, but the 'phpserialize' module
 is not available, so they can't be interpreted.''' .
             format(*map(nori.pps, [entity_type, bundle]))
         )
@@ -4257,7 +4251,7 @@ is not available, so they can't be interpreted.''' .
     # massage the defaults - not implemented yet
     nori.core.email_logger.error(
 '''Warning: there are defaults for Drupal fields under entity type
-{0) and bundle {1}, but the interpretation code
+{0} and bundle {1}, but the interpretation code
 hasn't been implemented yet.''' .
         format(*map(nori.pps, [entity_type, bundle]))
     )
@@ -4498,7 +4492,6 @@ def insert_drupal_relation(db_obj, db_cur, e1_entity_type, e1_entity_id,
     """
 
     # relation details
-    relation_cv = key_cv[1]
     relation_ident = relation_cv[0]
     relation_type = relation_ident[1]
     if len(relation_ident) > 2:
@@ -4543,12 +4536,12 @@ VALUES
     query_str = (
 '''
 INSERT INTO relation_revision
-(rid, relation_type, uid, created, changed, arity)
+(rid, relation_type, uid, changed, arity)
 VALUES
-(%s, %s, 1, %s, %s, 2)
+(%s, %s, 1, %s, 2)
 '''
     )
-    query_args = [rid, relation_type, curr_time, curr_time]
+    query_args = [rid, relation_type, curr_time]
     if not db_obj.execute(db_cur, query_str.strip(), query_args,
                           has_results=False):
         # won't be reached currently; script will exit on errors
