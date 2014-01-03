@@ -285,6 +285,8 @@ def nfs_to_drupal(template, row):
     (
         o_letter, o_type, o_volumn,
     ) = row[orig_num_keys:]
+    # this doesn't 100% guarantee that source_host will be valid,
+    # because there are cases in which the node title gets munged
     source_host, source_path = (o_volumn.split(':', 1) if o_volumn
                                                        else (None, None))
     new_row += [
