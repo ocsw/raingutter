@@ -276,6 +276,69 @@ AND drives.FILESYSTEM <> 'SMB'"""
 ))
 
 
+############################## NFS mounts ##############################
+
+def nfs_to_drupal(template, row):
+    orig_num_keys = 2
+    new_row = list(row[0:orig_num_keys])
+    (
+        o_letter, o_type, o_volumn,
+    ) = row[orig_num_keys:]
+    source_host, source_path = o_volumn.split(':', 1)
+    new_row += [
+        source_host,
+        source_path,
+        (o_letter if o_letter else o_type),
+    ]
+    for i, val in enumerate(new_row):
+        if not val:
+            new_row[i] = None
+    return ((orig_num_keys + 1), tuple(new_row))
+
+templates.append(dict(
+    name='NFS mounts',
+    source_query_func_args=([], dict(
+        tables=(
+'''hardware
+INNER JOIN accountinfo ON accountinfo.HARDWARE_ID = hardware.ID
+INNER JOIN drives ON drives.HARDWARE_ID = hardware.ID'''
+        ),
+        key_cv=[
+            ('accountinfo.TAG', 'string',),
+            ('drives.ID', 'integer',),
+        ],
+        value_cv=[
+            ('drives.LETTER', 'string',),
+            ('drives.TYPE', 'string',),
+            ('drives.VOLUMN', 'string',),
+        ],
+        where_str=(
+"""hardware.ID IN
+    (SELECT max(hardware.ID)
+     FROM hardware
+     LEFT JOIN accountinfo ON accountinfo.HARDWARE_ID = hardware.ID
+     GROUP BY accountinfo.TAG)
+AND (drives.FILESYSTEM = 'nfs' OR drives.FILESYSTEM = 'NFS')"""
+        ),
+        where_args=[],
+        more_str='ORDER BY accountinfo.TAG',
+        more_args=[],
+    )),
+    to_dest_func=nfs_to_drupal,
+    dest_query_func_args=([], dict(
+        key_cv=[
+            (('node', 'server', 'title'), 'string',),
+            (('relation', 'nfs_mounts', 'ocs_drive_id'), 'integer',),
+            (('node', 'server', 'title'), 'string',),
+        ],
+        value_cv=[
+            (('field', 'source_path'), 'string',),
+            (('field', 'destination_path'), 'string',),
+        ],
+    )),
+))
+
+
 ######################### network ports: main ##########################
 
 def ports_to_drupal(template, row):
