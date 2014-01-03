@@ -1854,7 +1854,7 @@ Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, mode, key_cv,
         # I finally realized that if you try to retrieve multiple fields
         # simultaneously, and there are bogus rows with deleted = 1,
         # you will lose entire result rows.  Even a construct like
-        #     'AND (f.deleted = 0 OR f.deleted IS NULL'
+        #     'AND (f.deleted = 0 OR f.deleted IS NULL)'
         # doesn't help, because the column is only NULL if the join
         # fails entirely.  Moreover, the same problem applies if (for
         # example) there is a row with the same entity_id but a
@@ -3864,9 +3864,9 @@ def get_drupal_node_ids_timestamp(db_obj, db_cur, node_cv, descr):
     if not ret:  # including None
         nori.core.email_logger.error(
 '''Warning: could not get the IDs of the following {0} node:
-node_type: {1}
-node_id_type: {2}
-node_value: {3}
+    node_type: {1}
+    node_id_type: {2}
+    node_value: {3}
 Skipping timestamp update.''' .
             format(descr, *map(nori.pps, [node_type, node_id_type,
                                           node_value]))
