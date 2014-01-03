@@ -932,7 +932,7 @@ def validate_drupal_cv(cv_index, cv, kv):
     elif ident[0] == 'label':
         nori.setting_check_len(ident_index, 1, 1)
 
-    if ident[0] != 'relation' or len(ident) > 2
+    if ident[0] != 'relation' or len(ident) > 2:
         nori.setting_check_not_blank(data_type_index)
 
 
