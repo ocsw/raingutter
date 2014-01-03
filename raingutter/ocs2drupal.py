@@ -31,7 +31,8 @@ def single_direct_to_drupal(template, row):
         ram,
         os,
         os_version,
-        o_oscomments.replace('\n', ' '),  # kernel string
+        # kernel string
+        o_oscomments.replace('\n', ' ') if o_oscomments else None,
         (o_swap / 1024),
     ]
     for i, val in enumerate(new_row):
@@ -220,7 +221,7 @@ def volumes_to_drupal(template, row):
         (o_letter if o_letter else o_type),
         device_name,
         filesystem,
-        math.floor(o_total / 1024),
+        math.floor(o_total / 1024) if o_total else None,
     ]
     for i, val in enumerate(new_row):
         if not val:
@@ -284,7 +285,8 @@ def nfs_to_drupal(template, row):
     (
         o_letter, o_type, o_volumn,
     ) = row[orig_num_keys:]
-    source_host, source_path = o_volumn.split(':', 1)
+    source_host, source_path = o_volumn.split(':', 1) if o_volumn
+                                                      else (None, None)
     new_row += [
         source_host,
         source_path,

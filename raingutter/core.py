@@ -1016,7 +1016,7 @@ def validate_drupal_chain(key_index, key_cv, value_index, value_cv):
     nori.setting_check_not_empty(key_index)
     key_entities = []
     for i, cv in enumerate(key_cv):
-        validate_drupal_cv(key_index + (i, ), cv[i], 'k')
+        validate_drupal_cv(key_index + (i, ), key_cv[i], 'k')
         key_entities.append(key_cv[i][0][0])
 
     # value_cv
