@@ -5364,7 +5364,7 @@ def render_diff_report():
             diff_report += '\n'
     elif nori.core.cfg['report_order'] == 'keys':
         for key_str in diff_dict:
-            section_header = ('Key string {0}:' .
+            section_header = ('Key tuple {0}:' .
                               format(nori.pps(key_str)))
             section_header += '\n' + ('-' * len(section_header)) + '\n\n'
             diff_report += section_header
