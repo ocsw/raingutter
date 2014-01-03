@@ -920,8 +920,10 @@ def validate_drupal_cv(cv_index, cv, kv):
         nori.setting_check_not_blank(ident_index + (1, ))
         nori.setting_check_list(ident_index + (2, ), ['id', 'label'])
     elif ident[0] == 'relation':
-        nori.setting_check_len(ident_index, 2, 2)
+        nori.setting_check_len(ident_index, 2, 3)
         nori.setting_check_not_blank(ident_index + (1, ))
+        if len(ident) > 2:
+            nori.setting_check_not_blank(ident_index + (2, ))
     elif ident[0] == 'field':
         nori.setting_check_len(ident_index, 2, 2)
         nori.setting_check_not_blank(ident_index + (1, ))
@@ -930,7 +932,7 @@ def validate_drupal_cv(cv_index, cv, kv):
     elif ident[0] == 'label':
         nori.setting_check_len(ident_index, 1, 1)
 
-    if ident[0] != 'relation':
+    if ident[0] != 'relation' or len(ident) > 2
         nori.setting_check_not_blank(data_type_index)
 
 
@@ -1714,6 +1716,7 @@ def drupal_db_query(db_obj, db_cur, mode, key_cv, value_cv):
         node -> relation -> node
         node -> relation & node -> relation_field(s) (incl. term refs)
         node -> fc -> field(s) (including term references)
+        relations specified by fields (including term references)
 
     These cases aren't supported - _yet_:
         node -> fc -> fc -> field(s)
@@ -1775,12 +1778,15 @@ def drupal_db_query(db_obj, db_cur, mode, key_cv, value_cv):
                             retrieved from the database
                           * is required whether or not the FC's 'value'
                             is supplied
-              * for relations: ('relation', relation_type)
-                    * note that supplying a value for a relation is not
-                      supported
-                    * therefore, the data type is optional and ignored
+              * for relations: ('relation', relation_type) or
+                ('relation', relation_type, field_name), where
+                field_name is the name of a field in the relation itself
+                    * the data type is optional and ignored
+                      in the first case
                     * however, remember that the overall key_cv entry
                       must be a tuple: (('relation', relation_type), )
+                    * in the second case, the data type and value are
+                      for the referenced field
               * for fields: ('field', field_name)
               * for title fields (in case the title of a node is also a
                 'value' entry that must be changed): ('title',)
@@ -2095,19 +2101,66 @@ ORDER BY node.title, node.nid, {7}
 
         # handle key-node ID types
         if k_node_id_type == 'id':
-            key_column = 'k_node.nid'
+            node_key_column = 'k_node.nid'
         elif k_node_id_type == 'title':
-            key_column = 'k_node.title'
+            node_key_column = 'k_node.title'
 
         # handle specified key-node value
         k_node_value_cond = ''
         if len(k_node_cv) > 2:
-            k_node_value_cond = 'AND {0} = %s'.format(key_column)
+            k_node_value_cond = 'AND {0} = %s'.format(node_key_column)
 
         # relation details
         relation_cv = key_cv[1]
         relation_ident = relation_cv[0]
         relation_type = relation_ident[1]
+
+        # handle key relation-field
+        relation_key_column = ''
+        relation_field_join = ''
+        relation_field_cond = ''
+        relation_value_cond = ''
+        if len(relation_ident) > 2:
+            relation_field_name = relation_ident[2]
+            relation_value_type = relation_cv[1]
+
+            # field join
+            relation_field_join = (
+                'LEFT JOIN field_data_field_{0} AS k_rf\n'
+                'ON k_rf.entity_id = e2.entity_id\n'
+                'AND k_rf.revision_id = e2.revision_id' .
+                format(relation_field_name)
+            )
+
+            # conditions
+            relation_field_cond = (
+                "AND k_rf.entity_type = 'relation'\n"
+                "AND k_rf.deleted = 0"
+            )
+
+            # handle value type
+            if relation_value_type.startswith('term: '):
+                relation_key_column = 'k_rf_t.name'
+                relation_field_join += (
+                    '\nLEFT JOIN taxonomy_term_data AS k_rf_t\n'
+                    'ON k_rf_t.tid = k_rf.field_{0}_tid' .
+                    format(relation_field_name)
+                )
+            elif relation_value_type == 'ip':
+                relation_key_column = (
+                    'k_rf.field_{0}_start,'.format(relation_field_name)
+                )
+            else:
+                relation_key_column = (
+                    'k_rf.field_{0}_value,'.format(relation_field_name)
+                )
+
+            # handle specified field value
+            if len(relation_cv) > 2:
+                relation_value = relation_cv[2]
+                relation_value_cond = (
+                    'AND {0} = %s'.format(relation_key_column)
+                )
 
         # value-node details
         v_node_cv = value_cv[0]
@@ -2140,7 +2193,7 @@ ORDER BY node.title, node.nid, {7}
         # query string and arguments
         query_str = (
 '''
-SELECT {0}, {1}{2}
+SELECT {0}, {1}{2}{3}
 FROM node AS k_node
 LEFT JOIN field_data_endpoints AS e1
           ON e1.endpoints_entity_id = k_node.nid
@@ -2148,6 +2201,7 @@ LEFT JOIN field_data_endpoints AS e2
           ON e2.entity_id = e1.entity_id
           AND e2.revision_id = e1.revision_id
           AND e2.endpoints_r_index > e1.endpoints_r_index
+{4}
 LEFT JOIN node AS v_node
           ON v_node.nid = e2.endpoints_entity_id
 WHERE k_node.vid IN
@@ -2155,7 +2209,7 @@ WHERE k_node.vid IN
        FROM node_revision
        GROUP BY nid)
 AND k_node.type = %s
-{3}
+{5}
 AND e1.revision_id IN
     (SELECT MAX(vid)
      FROM relation_revision
@@ -2165,17 +2219,26 @@ AND e1.bundle = %s
 AND e1.endpoints_entity_type = 'node'
 AND e1.deleted = 0
 AND e2.endpoints_entity_type = 'node'
-AND e2.deleted = 0 OR e2.deleted
+AND e2.deleted = 0
+{6}
+{7}
 AND v_node.vid IN
     (SELECT MAX(vid)
      FROM node_revision
      GROUP BY nid)
-{4}
-{5}
+{8}
+{9}
 ORDER BY k_node.title, k_node.nid, e1.entity_id, v_node.title, v_node.nid
 ''' .
-            format(key_column, value_column, extra_value_cols,
+            format(node_key_column,
+                   (relation_key_column + ', ') if relation_key_column
+                                                else '',
+                   value_column,
+                   extra_value_cols,
+                   relation_field_join,
                    k_node_value_cond,
+                   relation_field_cond,
+                   relation_value_cond,
                    v_node_type_cond,
                    v_node_value_cond)
         )
@@ -2183,6 +2246,8 @@ ORDER BY k_node.title, k_node.nid, e1.entity_id, v_node.title, v_node.nid
         if len(k_node_cv) > 2:
             query_args.append(k_node_value)
         query_args.append(relation_type)
+        if len(relation_ident) > 2 and len(relation_cv) > 2:
+            query_args.append(relation_value)
         if v_node_type is not None:
             query_args.append(v_node_type)
         if len(v_node_cv) > 2:
@@ -2203,19 +2268,66 @@ ORDER BY k_node.title, k_node.nid, e1.entity_id, v_node.title, v_node.nid
 
         # handle node1 ID types
         if node1_id_type == 'id':
-            key_column_1 = 'node1.nid'
+            node1_key_column = 'node1.nid'
         elif node1_id_type == 'title':
-            key_column_1 = 'node1.title'
+            node1_key_column = 'node1.title'
 
         # handle specified node1 value
         node1_value_cond = ''
         if len(node1_cv) > 2:
-            node1_value_cond = 'AND {0} = %s'.format(key_column_1)
+            node1_value_cond = 'AND {0} = %s'.format(node1_key_column)
 
         # relation details
         relation_cv = key_cv[1]
         relation_ident = relation_cv[0]
         relation_type = relation_ident[1]
+
+        # handle key relation-field
+        relation_key_column = ''
+        relation_field_join = ''
+        relation_field_cond = ''
+        relation_value_cond = ''
+        if len(relation_ident) > 2:
+            relation_field_name = relation_ident[2]
+            relation_value_type = relation_cv[1]
+
+            # field join
+            relation_field_join = (
+                'LEFT JOIN field_data_field_{0} AS k_rf\n'
+                'ON k_rf.entity_id = e2.entity_id\n'
+                'AND k_rf.revision_id = e2.revision_id' .
+                format(relation_field_name)
+            )
+
+            # conditions
+            relation_field_cond = (
+                "AND k_rf.entity_type = 'relation'\n"
+                "AND k_rf.deleted = 0"
+            )
+
+            # handle value type
+            if relation_value_type.startswith('term: '):
+                relation_key_column = 'k_rf_t.name'
+                relation_field_join += (
+                    '\nLEFT JOIN taxonomy_term_data AS k_rf_t\n'
+                    'ON k_rf_t.tid = k_rf.field_{0}_tid' .
+                    format(relation_field_name)
+                )
+            elif relation_value_type == 'ip':
+                relation_key_column = (
+                    'k_rf.field_{0}_start,'.format(relation_field_name)
+                )
+            else:
+                relation_key_column = (
+                    'k_rf.field_{0}_value,'.format(relation_field_name)
+                )
+
+            # handle specified field value
+            if len(relation_cv) > 2:
+                relation_value = relation_cv[2]
+                relation_value_cond = (
+                    'AND {0} = %s'.format(relation_key_column)
+                )
 
         # node2 details
         node2_cv = key_cv[2]
@@ -2228,14 +2340,14 @@ ORDER BY k_node.title, k_node.nid, e1.entity_id, v_node.title, v_node.nid
 
         # handle node2 ID types
         if node2_id_type == 'id':
-            key_column_2 = 'node2.nid'
+            node2_key_column = 'node2.nid'
         elif node2_id_type == 'title':
-            key_column_2 = 'node2.title'
+            node2_key_column = 'node2.title'
 
         # handle specified node2 value
         node2_value_cond = ''
         if len(node2_cv) > 2:
-            node2_value_cond = 'AND {0} = %s'.format(key_column_2)
+            node2_value_cond = 'AND {0} = %s'.format(node2_key_column)
 
         field_idents = {}
         field_value_types = {}
@@ -2303,7 +2415,7 @@ ORDER BY k_node.title, k_node.nid, e1.entity_id, v_node.title, v_node.nid
         # query string and arguments
         query_str = (
 '''
-SELECT {0}, {1}, {2}
+SELECT {0}, {1}{2}, {3}
 FROM node AS node1
 LEFT JOIN field_data_endpoints AS e1
           ON e1.endpoints_entity_id = node1.nid
@@ -2311,16 +2423,17 @@ LEFT JOIN field_data_endpoints AS e2
           ON e2.entity_id = e1.entity_id
           AND e2.revision_id = e1.revision_id
           AND e2.endpoints_r_index > e1.endpoints_r_index
+{4}
 LEFT JOIN node AS node2
           ON node2.nid = e2.endpoints_entity_id
-{3}
-{4}
+{5}
+{6}
 WHERE node1.vid IN
       (SELECT MAX(vid)
        FROM node_revision
        GROUP BY nid)
 AND node1.type = %s
-{5}
+{7}
 AND e1.revision_id IN
     (SELECT MAX(vid)
      FROM relation_revision
@@ -2331,21 +2444,30 @@ AND e1.endpoints_entity_type = 'node'
 AND e1.deleted = 0
 AND e2.endpoints_entity_type = 'node'
 AND e2.deleted = 0
+{8}
+{9}
 AND node2.vid IN
     (SELECT MAX(vid)
      FROM node_revision
      GROUP BY nid)
 AND node2.type = %s
-{6}
-{7}
-{8}
-{9}
-ORDER BY k_node.title, k_node.nid, e1.entity_id, {10}
+{10}
+{11}
+{12}
+{13}
+ORDER BY k_node.title, k_node.nid, e1.entity_id, {14}
 ''' .
-            format(key_column_1, key_column_2, ', '.join(value_columns),
+            format(node1_key_column,
+                   (relation_key_column + ', ') if relation_key_column
+                                                else '',
+                   node2_key_column,
+                   ', '.join(value_columns),
+                   relation_field_join,
                    '\n'.join(field_joins),
                    '\n'.join(term_joins),
                    node1_value_cond,
+                   relation_field_cond,
+                   relation_value_cond,
                    node2_value_cond,
                    '\n'.join(field_entity_conds),
                    '\n'.join(field_value_conds),
@@ -2356,6 +2478,8 @@ ORDER BY k_node.title, k_node.nid, e1.entity_id, {10}
         if len(node1_cv) > 2:
             query_args.append(node1_value)
         query_args.append(relation_type)
+        if len(relation_ident) > 2 and len(relation_cv) > 2:
+            query_args.append(relation_value)
         query_args.append(node2_type)
         if len(node2_cv) > 2:
             query_args.append(node2_value)
@@ -2680,14 +2804,54 @@ AND f.deleted = 0
 
         # handle key-node ID types
         if k_node_id_type == 'id':
-            key_column = 'k_node.nid'
+            node_key_column = 'k_node.nid'
         elif k_node_id_type == 'title':
-            key_column = 'k_node.title'
+            node_key_column = 'k_node.title'
 
         # relation details
         relation_cv = key_cv[1]
         relation_ident = relation_cv[0]
         relation_type = relation_ident[1]
+
+        # handle key relation-field
+        relation_field_join = ''
+        relation_field_cond = ''
+        if len(relation_ident) > 2:
+            relation_field_name = relation_ident[2]
+            relation_value_type = relation_cv[1]
+            relation_value = relation_cv[2]
+
+            # field join
+            relation_field_join = (
+                'LEFT JOIN field_data_field_{0} AS k_rf\n'
+                'ON k_rf.entity_id = e2.entity_id\n'
+                'AND k_rf.revision_id = e2.revision_id' .
+                format(relation_field_name)
+            )
+
+            # conditions
+            relation_field_cond = (
+                "AND k_rf.entity_type = 'relation'\n"
+                "AND {0} = %s\n"
+                "AND k_rf.deleted = 0".format(relation_key_column)
+            )
+
+            # handle value type
+            if relation_value_type.startswith('term: '):
+                relation_key_column = 'k_rf_t.name'
+                relation_field_join += (
+                    '\nLEFT JOIN taxonomy_term_data AS k_rf_t\n'
+                    'ON k_rf_t.tid = k_rf.field_{0}_tid' .
+                    format(relation_field_name)
+                )
+            elif relation_value_type == 'ip':
+                relation_key_column = (
+                    'k_rf.field_{0}_start,'.format(relation_field_name)
+                )
+            else:
+                relation_key_column = (
+                    'k_rf.field_{0}_value,'.format(relation_field_name)
+                )
 
         # value-node details
         v_node_cv = value_cv[0]
@@ -2713,6 +2877,7 @@ LEFT JOIN field_{0}_endpoints AS e2
           ON e2.entity_id = e1.entity_id
           AND e2.revision_id = e1.revision_id
           AND e2.endpoints_r_index > e1.endpoints_r_index
+{1}
 LEFT JOIN node AS v_node
 SET e2.endpoints_entity_id = v_node.nid
 WHERE k_node.vid IN
@@ -2720,7 +2885,7 @@ WHERE k_node.vid IN
        FROM node_revision
        GROUP BY nid)
 AND k_node.type = %s
-AND {1} = %s
+AND {2} = %s
 AND e1.revision_id IN
     (SELECT MAX(vid)
      FROM relation_revision
@@ -2731,12 +2896,13 @@ AND e1.endpoints_entity_type = 'node'
 AND e1.deleted = 0
 AND e2.endpoints_entity_type = 'node'
 AND e2.deleted = 0
+{3}
 AND v_node.vid IN
     (SELECT MAX(vid)
      FROM node_revision
      GROUP BY nid)
 AND v_node.type = %s
-AND {2} = %s
+AND {4} = %s
 '''
         )
         query_str = {}
@@ -2744,11 +2910,15 @@ AND {2} = %s
         for dr_str in ['data', 'revision']:
             query_str[dr_str] = query_str_raw.format(
                 dr_str,
-                key_column,
+                relation_field_join,
+                node_key_column,
+                relation_field_cond,
                 value_column
             )
-            query_args[dr_str] = [k_node_type, k_node_value, relation_type,
-                                  v_node_type, v_node_value]
+            query_args[dr_str] = [k_node_type, k_node_value, relation_type]
+            if len(relation_ident) > 2:
+                query_args[dr_str].append(relation_value)
+            query_args[dr_str] += [v_node_type, v_node_value]
 
     #
     # node -> relation & node -> relation_field (incl. term refs)
@@ -2764,14 +2934,54 @@ AND {2} = %s
 
         # handle node1 ID types
         if node1_id_type == 'id':
-            key_column_1 = 'node1.nid'
+            node1_key_column = 'node1.nid'
         elif node1_id_type == 'title':
-            key_column_1 = 'node1.title'
+            node1_key_column = 'node1.title'
 
         # relation details
         relation_cv = key_cv[1]
         relation_ident = relation_cv[0]
         relation_type = relation_ident[1]
+
+        # handle key relation-field
+        relation_field_join = ''
+        relation_field_cond = ''
+        if len(relation_ident) > 2:
+            relation_field_name = relation_ident[2]
+            relation_value_type = relation_cv[1]
+            relation_value = relation_cv[2]
+
+            # field join
+            relation_field_join = (
+                'LEFT JOIN field_data_field_{0} AS k_rf\n'
+                'ON k_rf.entity_id = e2.entity_id\n'
+                'AND k_rf.revision_id = e2.revision_id' .
+                format(relation_field_name)
+            )
+
+            # conditions
+            relation_field_cond = (
+                "AND k_rf.entity_type = 'relation'\n"
+                "AND {0} = %s\n"
+                "AND k_rf.deleted = 0".format(relation_key_column)
+            )
+
+            # handle value type
+            if relation_value_type.startswith('term: '):
+                relation_key_column = 'k_rf_t.name'
+                relation_field_join += (
+                    '\nLEFT JOIN taxonomy_term_data AS k_rf_t\n'
+                    'ON k_rf_t.tid = k_rf.field_{0}_tid' .
+                    format(relation_field_name)
+                )
+            elif relation_value_type == 'ip':
+                relation_key_column = (
+                    'k_rf.field_{0}_start,'.format(relation_field_name)
+                )
+            else:
+                relation_key_column = (
+                    'k_rf.field_{0}_value,'.format(relation_field_name)
+                )
 
         # node2 details
         node2_cv = key_cv[2]
@@ -2783,9 +2993,9 @@ AND {2} = %s
 
         # handle node2 ID types
         if node2_id_type == 'id':
-            key_column_2 = 'node2.nid'
+            node2_key_column = 'node2.nid'
         elif node2_id_type == 'title':
-            key_column_2 = 'node2.title'
+            node2_key_column = 'node2.title'
 
         # field details
         field_cv = value_cv[0]
@@ -2821,19 +3031,20 @@ LEFT JOIN field_data_endpoints AS e2
           ON e2.entity_id = e1.entity_id
           AND e2.revision_id = e1.revision_id
           AND e2.endpoints_r_index > e1.endpoints_r_index
+{0}
 LEFT JOIN node AS node2
           ON node2.nid = e2.endpoints_entity_id
-LEFT JOIN field_{0}_field_{1} AS f
+LEFT JOIN field_{1}_field_{2} AS f
 ON f.entity_id = e2.entity_id
 AND f.revision_id = e2.revision_id
-{2}
-SET {3} = {4}
+{3}
+SET {4} = {5}
 WHERE node1.vid IN
       (SELECT MAX(vid)
        FROM node_revision
        GROUP BY nid)
 AND node1.type = %s
-AND {5} = %s
+AND {6} = %s
 AND e1.revision_id IN
     (SELECT MAX(vid)
      FROM relation_revision
@@ -2844,12 +3055,13 @@ AND e1.endpoints_entity_type = 'node'
 AND e1.deleted = 0
 AND e2.endpoints_entity_type = 'node'
 AND e2.deleted = 0
+{7}
 AND node2.vid IN
     (SELECT MAX(vid)
      FROM node_revision
      GROUP BY nid)
 AND node2.type = %s
-AND {6} = %s
+AND {8} = %s
 AND f.entity_type = 'relation'
 AND f.deleted = 0
 '''
@@ -2858,16 +3070,21 @@ AND f.deleted = 0
         query_args = {}
         for dr_str in ['data', 'revision']:
             query_str[dr_str] = query_str_raw.format(
+                relation_field_join,
                 dr_str,
                 field_name,
                 term_join,
                 value_column,
                 value_str,
-                key_column_1,
-                key_column_2
+                node1_key_column,
+                relation_field_cond,
+                node2_key_column
             )
             query_args[dr_str] = [field_value, node1_type, node1_value,
-                                  relation_type, node2_type, node2_value]
+                                  relation_type]
+            if len(relation_ident) > 2:
+                query_args[dr_str].append(relation_value)
+            query_args[dr_str] += [node2_type, node2_value]
 
     #
     # node -> fc -> field (including term references)
@@ -3105,6 +3322,10 @@ Skipping insert.''' .
         relation_cv = key_cv[1]
         relation_ident = relation_cv[0]
         relation_type = relation_ident[1]
+        if len(relation_ident) > 2:
+            relation_field_name = relation_ident[2]
+            relation_value_type = relation_cv[1]
+            relation_value = relation_cv[2]
 
         # value-node details
         v_node_cv = value_cv[0]
@@ -3164,7 +3385,7 @@ Skipping insert.''' .
 
         # insert the relation
         return insert_drupal_relation(db_obj, db_cur, 'node', k_nid,
-                                      relation_type, 'node', v_nid)[0]
+                                      relation_cv, 'node', v_nid)[0]
 
     #
     # node -> relation & node -> relation_field (incl. term refs)
@@ -3190,6 +3411,10 @@ Skipping insert.''' .
         relation_cv = key_cv[1]
         relation_ident = relation_cv[0]
         relation_type = relation_ident[1]
+        if len(relation_ident) > 2:
+            relation_field_name = relation_ident[2]
+            relation_value_type = relation_cv[1]
+            relation_value = relation_cv[2]
 
         # node2 details
         node2_cv = key_cv[2]
@@ -3262,28 +3487,44 @@ Skipping insert.''' .
 
         # get the relation's IDs
         ret = get_drupal_relation_ids(db_obj, db_cur, 'node', node1_nid,
-                                      relation_type, 'node', node2_nid)
+                                      relation_cv, 'node', node2_nid)
         if ret is None:
-            nori.core.email_logger.error(
+            if len(relation_ident) > 2:
+                msg = (
+'''Warning: could not get the IDs of the following relation:
+    type: {0}
+    field_name: {1}
+    field_value: {2}
+with the following endpoints:
+''' .
+                    format(relation_type, relation_field_name,
+                           relation_value)
+                )
+            else:
+                msg = (
 '''Warning: could not get the IDs of the {0} relation with
 the following endpoints:
-    node1_type: {1}
-    node1_id_type: {2}
-    node1_value: {3}
-    node2_type: {4}
-    node2_id_type: {5}
-    node2_value: {6}
+''' .
+                    format(relation_type)
+                )
+            msg += (
+'''    node1_type: {0}
+    node1_id_type: {1}
+    node1_value: {2}
+    node2_type: {3}
+    node2_id_type: {4}
+    node2_value: {5}
 Skipping insert.''' .
-                format(*map(nori.pps, [relation_type, node1_type,
-                                       node1_id_type, node1_value,
-                                       node2_type, node2_id_type,
-                                       node2_value]))
+                format(*map(nori.pps, [node1_type, node1_id_type,
+                                       node1_value, node2_type,
+                                       node2_id_type, node2_value]))
             )
+            nori.core.email_logger.error(msg)
             return None
         if not ret:
             # the relation doesn't exist, so insert it
             ret = insert_drupal_relation(db_obj, db_cur, 'node', node1_nid,
-                                         relation_type, 'node', node2_nid)
+                                         relation_cv, 'node', node2_nid)
             if ret[0] is None:
                 return None
             if not ret[0]:
@@ -3637,7 +3878,7 @@ Skipping timestamp update.''' .
 
 
 def get_drupal_relation_ids(db_obj, db_cur, e1_entity_type, e1_entity_id,
-                            relation_type, e2_entity_type, e2_entity_id):
+                            relation_cv, e2_entity_type, e2_entity_id):
 
     """
     Get the relation and revision IDs for a specified Drupal relation.
@@ -3651,12 +3892,64 @@ def get_drupal_relation_ids(db_obj, db_cur, e1_entity_type, e1_entity_id,
         e1_entity_type: the entity type (e.g., 'node') of the relation's
                         first endpoint
         e1_entity_id: the entity ID of the relation's first endpoint
-        relation_type: the type string / bundle of the relation
+        relation_cv: the entry for the relation in a template key_cv
+                     sequence
         e2_entity_type: the entity type (e.g., 'node') of the relation's
                         second endpoint
         e2_entity_id: the entity ID of the relation's second endpoint
 
     """
+
+    # relation details
+    relation_cv = key_cv[1]
+    relation_ident = relation_cv[0]
+    relation_type = relation_ident[1]
+
+    # handle key relation-field
+    relation_field_join = ''
+    relation_field_cond = ''
+    relation_value_cond = ''
+    if len(relation_ident) > 2:
+        relation_field_name = relation_ident[2]
+        relation_value_type = relation_cv[1]
+
+        # field join
+        relation_field_join = (
+            'LEFT JOIN field_data_field_{0} AS k_rf\n'
+            'ON k_rf.entity_id = e2.entity_id\n'
+            'AND k_rf.revision_id = e2.revision_id' .
+            format(relation_field_name)
+        )
+
+        # conditions
+        relation_field_cond = (
+            "AND k_rf.entity_type = 'relation'\n"
+            "AND k_rf.deleted = 0"
+        )
+
+        # handle value type
+        if relation_value_type.startswith('term: '):
+            relation_key_column = 'k_rf_t.name'
+            relation_field_join += (
+                '\nLEFT JOIN taxonomy_term_data AS k_rf_t\n'
+                'ON k_rf_t.tid = k_rf.field_{0}_tid' .
+                format(relation_field_name)
+            )
+        elif relation_value_type == 'ip':
+            relation_key_column = (
+                'k_rf.field_{0}_start,'.format(relation_field_name)
+            )
+        else:
+            relation_key_column = (
+                'k_rf.field_{0}_value,'.format(relation_field_name)
+            )
+
+        # handle specified field value
+        if len(relation_cv) > 2:
+            relation_value = relation_cv[2]
+            relation_value_cond = (
+                'AND {0} = %s'.format(relation_key_column)
+            )
 
     # query string and arguments
     query_str = (
@@ -3667,6 +3960,7 @@ LEFT JOIN field_data_endpoints AS e2
           ON e2.entity_id = e1.entity_id
           AND e2.revision_id = e1.revision_id
           AND e2.endpoints_r_index > e1.endpoints_r_index
+{0}
 WHERE e1.revision_id IN
       (SELECT MAX(vid)
        FROM relation_revision
@@ -3679,10 +3973,16 @@ AND e1.deleted = 0
 AND e2.endpoints_entity_type = %s
 AND e2.endpoints_entity_id = %s
 AND e2.deleted = 0
-'''
+{1}
+{2}
+''' .
+        format(relation_field_join, relation_field_cond,
+               relation_value_cond)
     )
     query_args = [relation_type, e1_entity_type, e1_entity_id,
                   e2_entity_type, e2_entity_id]
+    if len(relation_ident) > 2 and len(relation_cv) > 2:
+        query_args.append(relation_value)
 
     # execute the query
     if not db_obj.execute(db_cur, query_str.strip(), query_args,
@@ -3697,7 +3997,7 @@ AND e2.deleted = 0
 
 
 def get_drupal_relation_ids_timestamp(db_obj, db_cur, e1_entity_type,
-                                      e1_entity_id, relation_type,
+                                      e1_entity_id, relation_cv,
                                       e2_entity_type, e2_entity_id):
 
     """
@@ -3711,22 +4011,49 @@ def get_drupal_relation_ids_timestamp(db_obj, db_cur, e1_entity_type,
         modules: nori
 
     """
+
+    # relation details
+    relation_cv = key_cv[1]
+    relation_ident = relation_cv[0]
+    relation_type = relation_ident[1]
+    if len(relation_ident) > 2:
+        relation_field_name = relation_ident[2]
+        relation_value_type = relation_cv[1]
+        relation_value = relation_cv[2]
+
+    # get the IDs
     ret = get_drupal_relation_ids(db_obj, db_cur, e1_entity_type,
-                                  e1_entity_id, relation_type,
-                                  e2_entity_type, e2_entity_id)
+                                  e1_entity_id, relation_cv, e2_entity_type,
+                                  e2_entity_id)
     if not ret:  # including None
-        nori.core.email_logger.error(
+        if len(relation_ident) > 2:
+            msg = (
+'''Warning: could not get the IDs of the following relation:
+    type: {0}
+    field_name: {1}
+    field_value: {2}
+with the following endpoints:
+''' .
+                format(relation_type, relation_field_name,
+                       relation_value)
+            )
+        else:
+            msg = (
 '''Warning: could not get the IDs of the {0} relation with
 the following endpoints:
-endpoint1 type: {1}
-endpoint1 id: {2}
-endpoint2 type: {3}
-endpoint2 id: {4}
+''' .
+                format(relation_type)
+            )
+        msg += (
+'''    endpoint1 type: {0}
+    endpoint1 id: {1}
+    endpoint2 type: {2}
+    endpoint2 id: {3}
 Skipping timestamp update.''' .
-            format(*map(nori.pps, [relation_type, e1_entity_type,
-                                   e1_entity_id, e2_entity_type,
-                                   e2_entity_id]))
+            format(*map(nori.pps, [e1_entity_type, e1_entity_id,
+                                   e2_entity_type, e2_entity_id]))
         )
+        nori.core.email_logger.error(msg)
         return None
     # we may eventually want to / be able to handle multiple rows
     # here, but for now just take the first one
@@ -4145,7 +4472,7 @@ AND vid = %s
 
 
 def insert_drupal_relation(db_obj, db_cur, e1_entity_type, e1_entity_id,
-                           relation_type, e2_entity_type, e2_entity_id):
+                           relation_cv, e2_entity_type, e2_entity_id):
 
     """
     Insert a Drupal relation.
@@ -4159,7 +4486,8 @@ def insert_drupal_relation(db_obj, db_cur, e1_entity_type, e1_entity_id,
         e1_entity_type: the entity type (e.g., 'node') of the relation's
                         first endpoint
         e1_entity_id: the entity ID of the relation's first endpoint
-        relation_type: the type string / bundle of the relation
+        relation_cv: the entry for the relation in a template key_cv
+                     sequence
         e2_entity_type: the entity type (e.g., 'node') of the relation's
                         second endpoint
         e2_entity_id: the entity ID of the relation's second endpoint
@@ -4168,6 +4496,15 @@ def insert_drupal_relation(db_obj, db_cur, e1_entity_type, e1_entity_id,
         modules: time, nori
 
     """
+
+    # relation details
+    relation_cv = key_cv[1]
+    relation_ident = relation_cv[0]
+    relation_type = relation_ident[1]
+    if len(relation_ident) > 2:
+        relation_field_name = relation_ident[2]
+        relation_value_type = relation_cv[1]
+        relation_value = relation_cv[2]
 
     # prepare for a transaction
     db_ac = db_obj.autocommit(None)
@@ -4274,6 +4611,14 @@ VALUES
     db_obj.autocommit(db_ac)
     if not ret:
         return (None, None, None)
+
+    # key field
+    if len(relation_ident) > 2:
+        if not insert_drupal_field(db_obj, db_cur, 'relation',
+                                   relation_type, rid, vid,
+                                   (('field', relation_field_name),
+                                    relation_value_type, relation_value)):
+            return (False, rid, vid)
 
     # default field values
     f_defs = get_drupal_field_defaults(db_obj, db_cur, 'relation',
