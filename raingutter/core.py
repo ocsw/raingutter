@@ -1380,6 +1380,7 @@ probably required.
         elif mode == 'update' and db_cur.rowcount == 0:
             # there was no row there to update, have to insert it
             redo_value_cv.append(cv)
+            failures += 1
         else:
             fulls += 1
 
@@ -1399,9 +1400,13 @@ probably required.
     if not redo_value_cv:
         ui_ret = status
     else:
+        if status is not None:
+            msg_start = 'However, s'
+        else:
+            msg_start = 'S'
         nori.core.status_logger.info(
-            'However, some rows were missing and could not be updated;\n'
-            'inserting them now.'
+            '{0}ome rows were missing and could not be updated;\n'
+            'inserting them now.'.format(msg_start)
         )
         # note: replication and timestamps are already being handled
         redo_status = update_insert_dispatcher(
@@ -1416,7 +1421,7 @@ probably required.
         elif not redo_status:
             ui_ret = False
         else:
-            if status:
+            if status or (len(redo_value_cv) == failures):
                 ui_ret = True
             else:
                 ui_ret = False
