@@ -222,7 +222,7 @@ Reverse the source and destination databases for diffs/syncs?
 Can be True or False.
 '''
     ),
-    default='False',
+    default=False,
     cl_coercer=nori.str_to_bool,
 )
 
@@ -239,21 +239,21 @@ checks for missing entries; it does not add them to the source database.)
 Can be True or False.
 '''
     ),
-    default='True',
+    default=True,
     cl_coercer=nori.str_to_bool,
 )
 
 nori.core.config_settings['pre_action_callbacks'] = dict(
     descr=(
 '''
-Functions to call before performing any database actions, or None.
+Functions to call before performing any database actions.
 
 This is intended for things like putting a web site into maintenance mode to
 prevent database changes while the script is active.
 
-If the setting is not None, it must contain a sequence of tuples in the
-format:
+The setting must contain a sequence of tuples in the format:
     (function, *args, **kwargs)
+The sequence may be empty if there are no pre-action callbacks.
 
 The callback functions must take these keyword arguments in addition to any
 other *args and **kwargs:
@@ -264,11 +264,11 @@ other *args and **kwargs:
 Note that 'source' and 'destination' here are subject to the value of the
 'reverse' setting.
 
-If this setting is not None, the functions are called once, right before the
-diff / sync is started, in order.
+The functions are called once, right before the diff / sync is started, in
+order.
 '''
     ),
-    default=None,
+    default=[],
 )
 
 nori.core.config_settings['post_action_callbacks'] = dict(
@@ -280,11 +280,11 @@ This is separate from the change callbacks (see below), and is intended for
 things like taking a web site out of maintenance mode (see
 pre_action_callback, above)
 
-If the setting is not None, it must contain a sequence of tuples in the
-format:
+The setting must contain a sequence of tuples in the format:
     (function, *args, **kwargs, register?)
 where register is a boolean indicating if the function should be registered
-to be called even if the script exits abnormally.
+to be called even if the script exits abnormally.  The sequence may be empty
+if there are no post-action callbacks.
 
 The callback functions must take these keyword arguments in addition to any
 other *args and **kwargs:
@@ -295,17 +295,16 @@ other *args and **kwargs:
 Note that 'source' and 'destination' here are subject to the value of the
 'reverse' setting.
 
-If this setting is not None, the functions are called once, right after the
-diff / sync is finished, in order.  Functions for which the register boolean
-is true will also be called once if the script exits abnormally.  Care is
-taken to prevent the functions from being called twice (once when finished,
-once on exit), but this may not be entirely guaranteed.  It is also not
-absolutely guaranteed that the pre-action callbacks will all be run before
-these functions, since they are registered before the pre-action functions
-are called.
+The functions are called once, right after the diff / sync is finished, in
+order.  Functions for which the register boolean is true will also be called
+once if the script exits abnormally.  Care is taken to prevent the functions
+from being called twice (once when finished, once on exit), but this may not
+be entirely guaranteed.  It is also not absolutely guaranteed that the
+pre-action callbacks will all be run before these functions, since they are
+registered before the pre-action functions are called.
 '''
     ),
-    default=None,
+    default=[],
 )
 
 nori.core.config_settings['templates'] = dict(
@@ -502,7 +501,6 @@ corresponding entry in the key list will be ignored for purposes of the
 comparison.
 '''
     ),
-    default=[],
 )
 
 nori.core.config_settings['template_mode'] = dict(
@@ -795,6 +793,10 @@ def apply_template_defaults():
 
     # apply defaults
     for i, template in enumerate(nori.core.cfg['templates']):
+        if not isinstance(nori.core.cfg['templates'][i],
+                          nori.core.MAPPING_TYPES):
+            continue
+
         if 'multiple_values' not in template:
             nori.core.cfg['templates'][i]['multiple_values'] = False
 
@@ -1085,7 +1087,7 @@ def validate_config():
     if nori.core.cfg['template_mode'] != 'all':
         nori.setting_check_not_empty('template_list')
         for i, t_name in enumerate(nori.core.cfg['template_list']):
-            nori.check_setting_type(('template_list', i),
+            nori.setting_check_type(('template_list', i),
                                     nori.core.STRING_TYPES)
     nori.setting_check_list('key_mode', ['all', 'include', 'exclude'])
     if nori.core.cfg['key_mode'] != 'all':
@@ -1202,6 +1204,7 @@ def validate_config():
     if nori.core.cfg['send_report_emails']:
         nori.setting_check_not_blank('report_emails_from')
         nori.setting_check_type('report_emails_to', list)
+        nori.setting_check_not_empty('report_emails_to')
         nori.setting_check_no_blanks('report_emails_to')
         nori.setting_check_type('report_emails_subject',
                                 nori.core.STRING_TYPES)
@@ -1210,7 +1213,7 @@ def validate_config():
               ) == tuple:
             nori.setting_check_len('report_emails_host', 2, 2)
             nori.setting_check_not_blank(('report_emails_host', 0))
-            nori.setting_check_num(('report_emails_host', 1), 1, 65535)
+            nori.setting_check_integer(('report_emails_host', 1), 1, 65535)
         else:
             nori.setting_check_not_blank('report_emails_host')
         if nori.setting_check_type(
