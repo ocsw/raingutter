@@ -53,6 +53,9 @@ import nori
 # constants
 ############
 
+# the name of this package
+PACKAGE_NAME = 'raingutter'
+
 # template elements (see the 'templates' setting)
 T_NAME_KEY = 'name'
 T_MULTIPLE_KEY = 'multiple_values'
@@ -366,7 +369,12 @@ looping over the value_cv columns.)
 '''
     ),
     # see apply_config_defaults() for default
-    default_descr='depends on source_type',
+    default_descr=(
+"""depends on source_type;
+'generic': {0}.generic_db_query
+'drupal': {0}.drupal_db_query""" .
+        format(PACKAGE_NAME)
+    ),
 )
 
 nori.core.config_settings['source_query_validator'] = dict(
@@ -377,7 +385,12 @@ query function.
 '''
     ),
     # see apply_config_defaults() for default
-    default_descr='depends on source_type',
+    default_descr=(
+"""depends on source_type;
+'generic': {0}.validate_generic_args
+'drupal': {0}.validate_drupal_args""" .
+        format(PACKAGE_NAME)
+    ),
 )
 
 nori.core.config_settings['source_template_change_callbacks'] = dict(
@@ -425,7 +438,12 @@ template itself.  They are called in order.
 '''
     ),
     # see apply_config_defaults() for default
-    default_descr='depends on source_type',
+    default_descr=(
+"""depends on source_type;
+'generic': []
+'drupal': [({0}.drupal_timestamp_callback, [], {{}})]""" .
+        format(PACKAGE_NAME)
+    ),
 )
 
 nori.core.config_settings['source_global_change_callbacks'] = dict(
@@ -454,7 +472,12 @@ The functions are called at most once, after the sync is complete, in order.
 '''
     ),
     # see apply_config_defaults() for default
-    default_descr='depends on source_type',
+    default_descr=(
+"""depends on source_type;
+'generic': []
+'drupal': [({0}.drupal_cache_callback, [], {{}})]""" .
+        format(PACKAGE_NAME)
+    ),
 )
 
 nori.core.config_settings['dest_type'] = dict(
@@ -478,7 +501,12 @@ See source_query_func for more information.
 '''
     ),
     # see apply_config_defaults() for default
-    default_descr='depends on dest_type',
+    default_descr=(
+"""depends on dest_type;
+'generic': {0}.generic_db_query
+'drupal': {0}.drupal_db_query""" .
+        format(PACKAGE_NAME)
+    ),
 )
 
 nori.core.config_settings['dest_query_validator'] = dict(
@@ -489,7 +517,12 @@ query function.
 '''
     ),
     # see apply_config_defaults() for default
-    default_descr='depends on dest_type',
+    default_descr=(
+"""depends on dest_type;
+'generic': {0}.validate_generic_args
+'drupal': {0}.validate_drupal_args""" .
+        format(PACKAGE_NAME)
+    ),
 )
 
 nori.core.config_settings['dest_template_change_callbacks'] = dict(
@@ -502,7 +535,12 @@ See source_template_change_callbacks for more information.
 '''
     ),
     # see apply_config_defaults() for default
-    default_descr='depends on dest_type',
+    default_descr=(
+"""depends on dest_type;
+'generic': []
+'drupal': [({0}.drupal_timestamp_callback, [], {{}})]""" .
+        format(PACKAGE_NAME)
+    ),
 )
 
 nori.core.config_settings['dest_global_change_callbacks'] = dict(
@@ -515,7 +553,12 @@ See source_global_change_callbacks for more information.
 '''
     ),
     # see apply_config_defaults() for default
-    default_descr='depends on dest_type',
+    default_descr=(
+"""depends on dest_type;
+'generic': []
+'drupal': [({0}.drupal_cache_callback, [], {{}})]""" .
+        format(PACKAGE_NAME)
+    ),
 )
 
 nori.core.config_settings['templates'] = dict(
