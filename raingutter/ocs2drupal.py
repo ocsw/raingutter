@@ -64,7 +64,7 @@ def single_direct_to_drupal(template, row):
 
 templates.append(dict(
     name='single-valued direct fields',
-    source_query_func_args=([], dict(
+    source_query_args=([], dict(
         tables=(
 '''hardware
 INNER JOIN accountinfo ON accountinfo.HARDWARE_ID = hardware.ID
@@ -102,7 +102,7 @@ AND (memories.CAPACITY <> 0 OR memories.CAPACITY IS NULL)"""
         more_args=[],
     )),
     to_dest_func=single_direct_to_drupal,
-    dest_query_func_args=([], dict(
+    dest_query_args=([], dict(
         key_cv=[
             (('node', 'server', 'title'), 'string',),
         ],
@@ -126,7 +126,7 @@ AND (memories.CAPACITY <> 0 OR memories.CAPACITY IS NULL)"""
 
 templates.append(dict(
     name='default gateway',
-    source_query_func_args=([], dict(
+    source_query_args=([], dict(
         tables=(
 '''hardware
 INNER JOIN accountinfo ON accountinfo.HARDWARE_ID = hardware.ID
@@ -150,7 +150,7 @@ AND networks.IPGATEWAY <> ''"""
         more_str='GROUP BY hardware.ID ORDER BY accountinfo.TAG',
         more_args=[],
     )),
-    dest_query_func_args=([], dict(
+    dest_query_args=([], dict(
         key_cv=[
             (('node', 'server', 'title'), 'string',),
         ],
@@ -185,7 +185,7 @@ def dimms_to_drupal(template, row):
 
 templates.append(dict(
     name='DIMMs',
-    source_query_func_args=([], dict(
+    source_query_args=([], dict(
         tables=(
 '''hardware
 INNER JOIN accountinfo ON accountinfo.HARDWARE_ID = hardware.ID
@@ -215,7 +215,7 @@ AND (memories.CAPACITY <> 0 OR memories.CAPACITY IS NULL)"""
         more_args=[],
     )),
     to_dest_func=dimms_to_drupal,
-    dest_query_func_args=([], dict(
+    dest_query_args=([], dict(
         key_cv=[
             (('node', 'server', 'title'), 'string',),
             (('fc', 'dimms', 'label'), 'string',),
@@ -254,7 +254,7 @@ def volumes_to_drupal(template, row):
 
 templates.append(dict(
     name='volumes',
-    source_query_func_args=([], dict(
+    source_query_args=([], dict(
         tables=(
 '''hardware
 INNER JOIN accountinfo ON accountinfo.HARDWARE_ID = hardware.ID
@@ -286,7 +286,7 @@ AND drives.FILESYSTEM <> 'SMB'"""
         more_args=[],
     )),
     to_dest_func=volumes_to_drupal,
-    dest_query_func_args=([], dict(
+    dest_query_args=([], dict(
         key_cv=[
             (('node', 'server', 'title'), 'string',),
             (('fc', 'volumes', 'label'), 'string',),
@@ -326,7 +326,7 @@ def nfs_to_drupal(template, row):
 
 templates.append(dict(
     name='NFS mounts',
-    source_query_func_args=([], dict(
+    source_query_args=([], dict(
         tables=(
 '''hardware
 INNER JOIN accountinfo ON accountinfo.HARDWARE_ID = hardware.ID
@@ -354,7 +354,7 @@ AND (drives.FILESYSTEM = 'nfs' OR drives.FILESYSTEM = 'NFS')"""
         more_args=[],
     )),
     to_dest_func=nfs_to_drupal,
-    dest_query_func_args=([], dict(
+    dest_query_args=([], dict(
         key_cv=[
             (('node', 'server', 'title'), 'string',),
             (('relation', 'nfs_mounts', 'ocs_drive_id'), 'integer',),
@@ -390,7 +390,7 @@ def ports_to_drupal(template, row):
 
 templates.append(dict(
     name='ports: main',
-    source_query_func_args=([], dict(
+    source_query_args=([], dict(
         tables=(
 '''hardware
 INNER JOIN accountinfo ON accountinfo.HARDWARE_ID = hardware.ID
@@ -416,7 +416,7 @@ INNER JOIN networks ON networks.HARDWARE_ID = hardware.ID'''
         more_args=[],
     )),
     to_dest_func=ports_to_drupal,
-    dest_query_func_args=([], dict(
+    dest_query_args=([], dict(
         key_cv=[
             (('node', 'server', 'title'), 'string',),
             (('fc', 'ports', 'label'), 'string',),
@@ -452,7 +452,7 @@ def ips_to_drupal(template, row):
 templates.append(dict(
     name='ports: IPs',
     multiple_values=True,
-    source_query_func_args=([], dict(
+    source_query_args=([], dict(
         tables=(
 """hardware
 INNER JOIN accountinfo ON accountinfo.HARDWARE_ID = hardware.ID
@@ -480,7 +480,7 @@ AND networks.IPADDRESS <> ''"""
         more_args=[],
     )),
     to_dest_func=ips_to_drupal,
-    dest_query_func_args=([], dict(
+    dest_query_args=([], dict(
         key_cv=[
             (('node', 'server', 'title'), 'string',),
             (('fc', 'ports', 'label'), 'string',),
@@ -497,7 +497,7 @@ AND networks.IPADDRESS <> ''"""
 templates.append(dict(
     name='IP view',
     multiple_values=True,
-    source_query_func_args=([], dict(
+    source_query_args=([], dict(
         tables=(
 '''hardware
 INNER JOIN accountinfo ON accountinfo.HARDWARE_ID = hardware.ID
@@ -522,7 +522,7 @@ AND networks.IPADDRESS <> ''"""
         more_str='ORDER BY accountinfo.TAG, networks.DESCRIPTION',
         more_args=[],
     )),
-    dest_query_func_args=([], dict(
+    dest_query_args=([], dict(
         key_cv=[
             (('node', 'server', 'title'), 'string',),
         ],
@@ -588,7 +588,7 @@ def software_to_drupal(template, row):
 
 templates.append(dict(
     name='software versions',
-    source_query_func_args=([], dict(
+    source_query_args=([], dict(
         tables=(
 '''hardware
 INNER JOIN accountinfo ON accountinfo.HARDWARE_ID = hardware.ID
@@ -615,7 +615,7 @@ AND ({0})""".format(namelist_str)
         more_args=[],
     )),
     to_dest_func=software_to_drupal,
-    dest_query_func_args=([], dict(
+    dest_query_args=([], dict(
         key_cv=[
             (('node', 'server', 'title'), 'string',),
             (('fc', 'software_versions', 'label'), 'string',),
