@@ -525,44 +525,44 @@ The templates for comparing / syncing the databases.
 
 This must be a sequence of dicts; the dicts must have these elements:
 
-    '{0}':
+    {0}:
         template name [string]
 
-    '{1}':
+    {1}:
         can there be multiple value-column values for the same set of
         key-column values (True), or are the value columns single-valued
         (False) [boolean; default: False]
 
-    '{2}':
+    {2}:
         source-DB query function arguments [tuple: (*args, **kwargs)]
 
-    '{3}':
+    {3}:
         to-dest transform function [function; default: None]
 
-    '{4}':
+    {4}:
         don't replicate source-DB changes? [boolean; default: False]
 
-    '{5}':
+    {5}:
         source-DB change callback function [sequence of tuples:
         [(function, *args, **kwargs)]; default: []]
 
-    '{6}':
+    {6}:
         dest-DB query function arguments [tuple: (*args, **kwargs)]
 
-    '{7}':
+    {7}:
         to-source transform function [function; default: None]
 
-    '{8}':
+    {8}:
         don't replicate dest-DB changes? [boolean; default: False]
 
-    '{9}':
+    {9}:
         dest-DB change callback function [sequence of tuples:
         [(function, *args, **kwargs)]; default: []]
 
-    '{10}':
+    {10}:
         key mode [string; default: 'all']
 
-    '{11}':
+    {11}:
         key list [list; default: []]
 
 Elements with a default indicated can be omitted.
@@ -571,104 +571,124 @@ In this context, 'keys' are identifiers for use in accessing the correct
 entity in the opposite database, and 'values' are the actual content to
 diff or sync.
 
-The template name should be unique across all templates, although this is
-not enforced (template indexes are provided for disambiguation).  It is
-recommended not to include spaces in the names, for easier specification on
-the command line.
+{0}:
 
-The multiple-values flag differentiates between cases like a person's
-height (they have exactly one, and it can be known or unknown, or
-correct or incorrect), and cases like a person's credit-card number
-(they may have several).
+    The template name should be unique across all templates, although this
+    is not enforced (template indexes are provided for disambiguation).  It
+    is recommended not to include spaces in the names, for easier
+    specification on the command line.
 
-If the multiple-values flag is true, matching works differently.
-Instead of rows with the same keys matching, and their values being
-compared, rows only match if both the keys and the values are the same.
+{1}:
 
-This means that if there is no match for a row, it can either be because
-there is no key match at all, or no key-and-value match.  If a value is
-changed in one database, it will usually show up as the latter case; the
-script will see this as one non-matching row on each side.  The script
-will attempt to add the source row to the destination database, but it
-will not delete anything from the destination database; this must be
-done by other means.
+    The multiple-values flag differentiates between cases like a person's
+    height (they have exactly one, and it can be known or unknown, or
+    correct or incorrect), and cases like a person's credit-card number
+    (they may have several).
 
-The transform functions, if specified, must take the following parameters:
-    template: the complete template entry for this data
-    row: a single row tuple from the results returned by the query function
-         (see above)
-and must return a tuple of (number_of_key_columns, data_row).  The row must
-be in the same format as the input, containing values suitable for
-comparison with or insertion into the opposite database.  In many cases,
-this will require no actual transformation, as the database connector will
-handle data-type conversion on both ends.
+    If the multiple-values flag is true, matching works differently.
+    Instead of rows with the same keys matching, and their values being
+    compared, rows only match if both the keys and the values are the same.
 
-Both transform functions will be called before comparing data, so be sure
-that they both output the data in the same format.  This format must also
-match the keys specified in the per-template and global key lists.
+    This means that if there is no match for a row, it can either be because
+    there is no key match at all, or no key-and-value match.  If a value is
+    changed in one database, it will usually show up as the latter case; the
+    script will see this as one non-matching row on each side.  The script
+    will attempt to add the source row to the destination database, but it
+    will not delete anything from the destination database; this must be
+    done by other means.
 
-If the don't-replicate flags are True, replication will be turned off before
-making any changes associated with this template.  This requires SUPER
-privileges in MySQL.
+{2}, {6}:
 
-The change callback functions, if specified, must be functions to call if
-this template has caused any changes in the database for a given row.  (Only
-the destination sequence is used, where 'destination' depends on the value
-of the 'reverse' setting.)  These are separate from the functions specified
-at the database level (see above), and are useful for things like emulating
-computed fields in a Drupal database.
+    See the description for the source_query_func setting.
 
-The callback functions must take these keyword arguments in addition to any
-other *args and **kwargs:
-    t_index: the index of the relevant template in the templates
-             setting
-    s_row: a tuple of (number of keys, transformed source data
-           tuple)
-    d_row: a tuple of (number of keys, transformed destination data
-           tuple)
-    new_key_cv: a copy of the key_cv element of the destination arguments
-                in the relevant template, with the new values inserted into
-                the tuples
-    new_value_cv: a copy of the value_cv element of the destination
-                  arguments in the relevant template, with the new values
-                  inserted into the tuples, but with only tuples needing to
-                  be updated / inserted included
-    d_db: the connection object for the destination database
-    d_cur: the cursor object for the destination database
-    diff_k: the key of the diff list within diff_dict
-    diff_i: the index of the diff within the list indicated by
-            diff_k
-and return True (success) or False (failure).
-(Note that 'destination' in these descriptions is subject to the value of
-the 'reverse' setting.)
+{3}, {7}:
 
-If the destination database is changed by this template, the functions are
-called at the end of processing the template, after the database-level
-functions (see above).  They are called in order.
+    The transform functions, if specified, must take the following
+    parameters:
+        template: the complete template entry for this data
+        row: a single row tuple from the results returned by the query
+             function (see above)
+    and must return a tuple of (number_of_key_columns, data_row).  The row
+    must be in the same format as the input, containing values suitable for
+    comparison with or insertion into the opposite database.  In many cases,
+    this will require no actual transformation, as the database connector
+    will handle data-type conversion on both ends.
 
-The key mode specifies which database entries to compare / sync; it may be
-'all', 'include', or 'exclude'.  For 'include' and 'exclude', the key list
-must contain the list of keys to include / exclude; for 'all', the key list
-must exist, but is ignored (you can use None).
+    Both transform functions will be called before comparing data, so be
+    sure that they both output the data in the same format.  This format
+    must also match the keys specified in the per-template and global key
+    lists.
 
-The checks are made after the appropriate transform functions are applied
-(see above).
+{4}, {8}:
 
-If there is a conflict between this setting and the global key mode setting
-in which one excludes an entry and the other includes it, the entry is
-excluded.
+    If the don't-replicate flags are True, replication will be turned off
+    before making any changes associated with this template.  This requires
+    SUPER privileges in MySQL.
 
-Key list entries may be tuples if there are multiple key columns in the
-database queries.
+{5}, {9}:
 
-The entries in the key list will be compared with the key columns of each
-data row beginning at the first column, after applying the transform
-function.  It is an error for a row to have fewer key columns than are in
-the key list, but if a row has more key columns, columns which have no
-corresponding entry in the key list will be ignored for purposes of the
-comparison.
+    The change callback functions, if specified, must be functions to call
+    if this template has caused any changes in the database for a given row.
+    (Only the destination sequence is used, where 'destination' depends on
+    the value of the 'reverse' setting.)  These are separate from the
+    functions specified at the database level (see above), and are useful
+    for things like emulating computed fields in a Drupal database.
+
+    The callback functions must take these keyword arguments in addition to
+    any other *args and **kwargs:
+        t_index: the index of the relevant template in the templates
+                setting
+        s_row: a tuple of (number of keys, transformed source data
+            tuple)
+        d_row: a tuple of (number of keys, transformed destination data
+            tuple)
+        new_key_cv: a copy of the key_cv element of the destination
+                    arguments in the relevant template, with the new values
+                    inserted into the tuples
+        new_value_cv: a copy of the value_cv element of the destination
+                      arguments in the relevant template, with the new
+                      values inserted into the tuples, but with only tuples
+                      needing to be updated / inserted included
+        d_db: the connection object for the destination database
+        d_cur: the cursor object for the destination database
+        diff_k: the key of the diff list within diff_dict
+        diff_i: the index of the diff within the list indicated by
+                diff_k
+    and return True (success) or False (failure).
+    (Note that 'destination' in these descriptions is subject to the value
+    of the 'reverse' setting.)
+
+    If the destination database is changed by this template, the functions
+    are called at the end of processing the template, after the
+    database-level functions (see above).  They are called in order.
+
+{10}:
+
+    The key mode specifies which database entries to compare / sync; it may
+    be 'all', 'include', or 'exclude'.  For 'include' and 'exclude', the key
+    list must contain the list of keys to include / exclude; for 'all', the
+    key list must exist, but is ignored (you can use None).
+
+    The checks are made after the appropriate transform functions are
+    applied (see above).
+
+    If there is a conflict between this setting and the global key mode
+    setting in which one excludes an entry and the other includes it, the
+    entry is excluded.
+
+{11}:
+
+    Key list entries may be tuples if there are multiple key columns in the
+    database queries.
+
+    The entries in the key list will be compared with the key columns of
+    each data row beginning at the first column, after applying the
+    transform function.  It is an error for a row to have fewer key columns
+    than are in the key list, but if a row has more key columns, columns
+    which have no corresponding entry in the key list will be ignored for
+    purposes of the comparison.
 ''' .
-        format(*T_KEYS)
+        format(*map(nori.pps, T_KEYS))
     ),
 )
 
