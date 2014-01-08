@@ -385,8 +385,33 @@ nori.core.config_settings['source_query_validator'] = dict(
     descr=(
 '''
 The function to call to validate each template's arguments to the source-DB
-query function.
-'''
+query function (see below).
+
+The function must accept the following arguments:
+    sd: 's' if source-DB arguments are being validated, 'd' if dest;
+        this is not subject to the 'reverse' setting
+    args_idx: a tuple representing the index of the arguments tuple within
+              the config setting dict; for example:
+              ('templates', 3, {0})
+    args_t: the actual arguments tuple; for example, the value of:
+            cfg['templates'][3][{0}]
+    t_index: the index of the template being validated within the templates
+             setting
+and should exit the script with an appropriate error message and status code
+if there is a problem with the arguments.
+
+Validator functions should check the existence, type, and contents of all
+elements of the argument tuple, as well as making sure there are no bogus
+elements.  See validate_drupal_args() and validate_config() in the
+{1} source code for examples.
+
+Note that the following are already checked before the validator is called:
+    * the existence, types, and non-emptiness of the key_cv and value_cv
+      elements
+    * the types and lengths (2 or 3) of all of the tuples within the key_cv
+      and value_cv elements
+''' .
+        format(nori.pps(T_S_QUERY_ARGS_KEY), PACKAGE_NAME)
     ),
     # see apply_config_defaults() for default
     default_descr=(
@@ -1090,15 +1115,69 @@ def validate_generic_chain(key_index, key_cv, value_index, value_cv):
         modules: nori
     """
     for index, cv in [(key_index, key_cv), (value_index, value_cv)]:
-        nori.setting_check_not_empty(index)
         for i, col in enumerate(cv):
-            nori.setting_check_type(index + (i, ),
-                                    nori.core.CONTAINER_TYPES)
-            nori.setting_check_len(index + (i, ), 2, 3)
             # column identifier
             nori.setting_check_not_blank(index + (i, 0))
             # data type
             nori.setting_check_not_blank(index + (i, 1))
+
+
+def validate_generic_args(sd, args_idx, args_t, t_index):
+
+    """
+    Validate query-function arguments for a generic database.
+
+    Parameters:
+        see the description of the source_query_validator setting
+
+    Dependencies:
+        functions: validate_generic_chain()
+        modules: nori
+
+    """
+
+    # no *args
+    nori.setting_check_len(args_idx + (0, ), 0, 0)
+
+    # no bogus **kwargs
+    valid_keys = [
+        'key_cv', 'value_cv', 'tables', 'where_str', 'where_args',
+        'more_str', 'more_args'
+    ]
+    for k, v in args_t[1].items():
+        if k not in valid_keys:
+            path = nori.setting_walk(args_idx + (1, k))[2]
+            nori.err_exit(
+                "Warning: {0} is set\n"
+                "(to {1}), but there is no such setting." .
+                    format(path, nori.pps(v)),
+                nori.core.exitvals['startup']['num']
+            )
+
+    # validate the key/value chain
+    key_idx = args_idx + (1, 'key_cv')
+    key_cv = args_t[1]['key_cv']
+    value_idx = args_idx + (1, 'value_cv')
+    value_cv = args_t[1]['value_cv']
+    validate_generic_chain(key_idx, key_cv, value_idx, value_cv)
+
+    # the rest
+    nori.setting_check_type(
+        args_idx + (1, 'tables'),
+        nori.core.CONTAINER_TYPES + nori.core.STRING_TYPES
+    )
+    nori.setting_check_type(
+        args_idx + (1, 'where_str'),
+        nori.core.STRING_TYPES + (nori.core.NONE_TYPE, )
+    )
+    nori.setting_check_type(args_idx + (1, 'where_args'),
+                            nori.core.CONTAINER_TYPES)
+    nori.setting_check_type(
+        args_idx + (1, 'more_str'),
+        nori.core.STRING_TYPES + (nori.core.NONE_TYPE, )
+    )
+    nori.setting_check_type(args_idx + (1, 'more_args'),
+                            nori.core.CONTAINER_TYPES)
 
 
 def validate_drupal_cv(cv_index, cv, kv):
@@ -1243,14 +1322,12 @@ def validate_drupal_chain(key_index, key_cv, value_index, value_cv):
     """
 
     # key_cv
-    nori.setting_check_not_empty(key_index)
     key_entities = []
     for i, cv in enumerate(key_cv):
         validate_drupal_cv(key_index + (i, ), key_cv[i], 'k')
         key_entities.append(key_cv[i][0][0])
 
     # value_cv
-    nori.setting_check_not_empty(value_index)
     value_entities = []
     for i, cv in enumerate(value_cv):
         validate_drupal_cv(value_index + (i, ), value_cv[i], 'v')
@@ -1263,10 +1340,44 @@ def validate_drupal_chain(key_index, key_cv, value_index, value_cv):
                       format(nori.setting_walk(key_index[0:-1])[2]),
                       nori.core.exitvals['startup']['num'])
 
-def validate_generic_args():
-    pass
-def validate_drupal_args():
-    pass
+
+def validate_drupal_args(sd, args_idx, args_t, t_index):
+
+    """
+    Validate query-function arguments for a Drupal database.
+
+    Parameters:
+        see the description of the source_query_validator setting
+
+    Dependencies:
+        functions: validate_drupal_chain()
+        modules: nori
+
+    """
+
+    # no *args
+    nori.setting_check_len(args_idx + (0, ), 0, 0)
+
+    # no bogus **kwargs
+    valid_keys = ['key_cv', 'value_cv']
+    for k, v in args_t[1].items():
+        if k not in valid_keys:
+            path = nori.setting_walk(args_idx + (1, k))[2]
+            nori.err_exit(
+                "Warning: {0} is set\n"
+                "(to {1}), but there is no such setting." .
+                    format(path, nori.pps(v)),
+                nori.core.exitvals['startup']['num']
+            )
+
+    # validate the key/value chain
+    key_idx = args_idx + (1, 'key_cv')
+    key_cv = args_t[1]['key_cv']
+    value_idx = args_idx + (1, 'value_cv')
+    value_cv = args_t[1]['value_cv']
+    validate_drupal_chain(key_idx, key_cv, value_idx, value_cv)
+
+
 def validate_config():
 
     """
@@ -1438,28 +1549,23 @@ def validate_config():
             nori.setting_check_not_empty(('templates', i, T_KEY_LIST_KEY))
 
         # templates: query-function arguments
-        s_db_type = nori.core.cfg['source_type']
-        s_key_ind = ('templates', i, T_S_QUERY_ARGS_KEY, 1, 'key_cv')
-        s_key_cv = template[T_S_QUERY_ARGS_KEY][1]['key_cv']
-        s_value_ind = ('templates', i, T_S_QUERY_ARGS_KEY, 1, 'value_cv')
-        s_value_cv = template[T_S_QUERY_ARGS_KEY][1]['value_cv']
-        if s_db_type == 'generic':
-            validate_generic_chain(s_key_ind, s_key_cv, s_value_ind,
-                                   s_value_cv)
-        elif s_db_type == 'drupal':
-            validate_drupal_chain(s_key_ind, s_key_cv, s_value_ind,
-                                  s_value_cv)
-        d_db_type = nori.core.cfg['dest_type']
-        d_key_ind = ('templates', i, T_D_QUERY_ARGS_KEY, 1, 'key_cv')
-        d_key_cv = template[T_D_QUERY_ARGS_KEY][1]['key_cv']
-        d_value_ind = ('templates', i, T_D_QUERY_ARGS_KEY, 1, 'value_cv')
-        d_value_cv = template[T_D_QUERY_ARGS_KEY][1]['value_cv']
-        if d_db_type == 'generic':
-            validate_generic_chain(d_key_ind, d_key_cv, d_value_ind,
-                                   d_value_cv)
-        elif d_db_type == 'drupal':
-            validate_drupal_chain(d_key_ind, d_key_cv, d_value_ind,
-                                  d_value_cv)
+        for (sd, t_key, validator_key) in [
+                ('s', T_S_QUERY_ARGS_KEY, 'source_query_validator'),
+                ('d', T_D_QUERY_ARGS_KEY, 'dest_query_validator')
+              ]:
+            # args tuple
+            args_idx = ('templates', i, t_key)
+            args_t = template[t_key]
+            # key_cv, value_cv (somewhat)
+            for cv_str in ['key_cv', 'value_cv']:
+                cv_idx = args_idx + (1, cv_str)
+                nori.setting_check_not_empty(cv_idx)
+                cv_seq = args_t[1][cv_str]
+                for j, cv in enumerate(cv_seq):
+                    nori.setting_check_type(cv_idx + (j, ), tuple)
+                    nori.setting_check_len(cv_idx + (j, ), 2, 3)
+            # the rest of the arguments
+            nori.core.cfg[validator_key](sd, args_idx, args_t, i)
 
     # reporting settings
     nori.setting_check_list('report_order', ['template', 'keys'])
