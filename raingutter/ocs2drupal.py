@@ -1,8 +1,28 @@
 #!/usr/bin/env python
 
+
+"""
+This is a set of templates for the raingutter database diff/sync tool.
+It is for getting data from OCS Inventory NG (*) into a Drupal inventory
+site I designed.
+(*) http://www.ocsinventory-ng.org/en/
+
+"""
+
+
+########################################################################
+#                               IMPORTS
+########################################################################
+
 import math
 
+
+########################################################################
+#                              TEMPLATES
+########################################################################
+
 templates = []
+
 
 ##################### single-valued direct fields ######################
 
@@ -12,6 +32,7 @@ def os_strings(osname, osversion):
     if osname == 'Microsoft Windows Server 2008 R2 Standard':
         return ('Windows Server 2008 R2', osversion)
     return (osname, osversion)
+
 
 def single_direct_to_drupal(template, row):
     orig_num_keys = 1
@@ -39,6 +60,7 @@ def single_direct_to_drupal(template, row):
         if not val:
             new_row[i] = None
     return (orig_num_keys, tuple(new_row))
+
 
 templates.append(dict(
     name='single-valued direct fields',
@@ -160,6 +182,7 @@ def dimms_to_drupal(template, row):
             new_row[i] = None
     return ((orig_num_keys + 1), tuple(new_row))
 
+
 templates.append(dict(
     name='DIMMs',
     source_query_func_args=([], dict(
@@ -227,6 +250,7 @@ def volumes_to_drupal(template, row):
         if not val:
             new_row[i] = None
     return ((orig_num_keys + 1), tuple(new_row))
+
 
 templates.append(dict(
     name='volumes',
@@ -299,6 +323,7 @@ def nfs_to_drupal(template, row):
             new_row[i] = None
     return ((orig_num_keys + 1), tuple(new_row))
 
+
 templates.append(dict(
     name='NFS mounts',
     source_query_func_args=([], dict(
@@ -362,6 +387,7 @@ def ports_to_drupal(template, row):
             new_row[i] = None
     return ((orig_num_keys + 1), tuple(new_row))
 
+
 templates.append(dict(
     name='ports: main',
     source_query_func_args=([], dict(
@@ -421,6 +447,7 @@ def ips_to_drupal(template, row):
         if not val:
             new_row[i] = None
     return ((orig_num_keys + 1), tuple(new_row))
+
 
 templates.append(dict(
     name='ports: IPs',
@@ -540,6 +567,7 @@ namelist = [
 ]
 namelist_str = ' OR '.join(["softwares.name LIKE %s" for x in namelist])
 
+
 def software_to_drupal(template, row):
     orig_num_keys = 1
     new_row = list(row[0:orig_num_keys])
@@ -556,6 +584,7 @@ def software_to_drupal(template, row):
         if not val:
             new_row[i] = None
     return ((orig_num_keys + 1), tuple(new_row))
+
 
 templates.append(dict(
     name='software versions',
