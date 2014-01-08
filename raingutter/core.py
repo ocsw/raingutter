@@ -1244,16 +1244,14 @@ def validate_config():
     nori.setting_check_list('action', ['diff', 'sync'])
     nori.setting_check_type('reverse', bool)
     nori.setting_check_type('bidir', bool)
-    nori.setting_check_type('pre_action_callbacks',
-                            nori.core.CONTAINER_TYPES)
+    nori.setting_check_type('pre_action_callbacks', tuple)
     for i, cb_t in enumerate(nori.core.cfg['pre_action_callbacks']):
         idx_t = ('pre_action_callbacks', i)
         nori.setting_check_len(idx_t, 3, 3)
         nori.setting_check_callable(idx_t + (0, ), may_be_none=False)
         nori.setting_check_type(idx_t + (1, ), nori.core.CONTAINER_TYPES)
         nori.setting_check_type(idx_t + (2, ), nori.core.MAPPING_TYPES)
-    nori.setting_check_type('post_action_callbacks',
-                            nori.core.CONTAINER_TYPES)
+    nori.setting_check_type('post_action_callbacks', tuple)
     for i, cb_t in enumerate(nori.core.cfg['post_action_callbacks']):
         idx_t = ('post_action_callbacks', i)
         nori.setting_check_len(idx_t, 4, 4)
@@ -1264,8 +1262,7 @@ def validate_config():
     nori.setting_check_list('source_type', ['generic', 'drupal'])
     nori.setting_check_callable('source_query_func', may_be_none=False)
     nori.setting_check_callable('source_query_validator', may_be_none=False)
-    nori.setting_check_type('source_template_change_callbacks',
-                            nori.core.CONTAINER_TYPES)
+    nori.setting_check_type('source_template_change_callbacks', tuple)
     for i, cb_t in enumerate(
             nori.core.cfg['source_template_change_callbacks']
           ):
@@ -1274,8 +1271,7 @@ def validate_config():
         nori.setting_check_callable(idx_t + (0, ), may_be_none=False)
         nori.setting_check_type(idx_t + (1, ), nori.core.CONTAINER_TYPES)
         nori.setting_check_type(idx_t + (2, ), nori.core.MAPPING_TYPES)
-    nori.setting_check_type('source_global_change_callbacks',
-                            nori.core.CONTAINER_TYPES)
+    nori.setting_check_type('source_global_change_callbacks', tuple)
     for i, cb_t in enumerate(
             nori.core.cfg['source_global_change_callbacks']
           ):
@@ -1287,8 +1283,7 @@ def validate_config():
     nori.setting_check_list('dest_type', ['generic', 'drupal'])
     nori.setting_check_callable('dest_query_func', may_be_none=False)
     nori.setting_check_callable('dest_query_validator', may_be_none=False)
-    nori.setting_check_type('dest_template_change_callbacks',
-                            nori.core.CONTAINER_TYPES)
+    nori.setting_check_type('dest_template_change_callbacks', tuple)
     for i, cb_t in enumerate(
             nori.core.cfg['dest_template_change_callbacks']
           ):
@@ -1297,8 +1292,7 @@ def validate_config():
         nori.setting_check_callable(idx_t + (0, ), may_be_none=False)
         nori.setting_check_type(idx_t + (1, ), nori.core.CONTAINER_TYPES)
         nori.setting_check_type(idx_t + (2, ), nori.core.MAPPING_TYPES)
-    nori.setting_check_type('dest_global_change_callbacks',
-                            nori.core.CONTAINER_TYPES)
+    nori.setting_check_type('dest_global_change_callbacks', tuple)
     for i, cb_t in enumerate(
             nori.core.cfg['dest_global_change_callbacks']
           ):
@@ -1349,8 +1343,7 @@ def validate_config():
         # source-DB don't-replicate flag
         nori.setting_check_type(('templates', i, T_S_NO_REPL_KEY), bool)
         # source-DB change callbacks
-        nori.setting_check_type(('templates', i, T_S_CHANGE_CB_KEY),
-                                nori.core.CONTAINER_TYPES)
+        nori.setting_check_type(('templates', i, T_S_CHANGE_CB_KEY), tuple)
         for j, cb_t in enumerate(
                 nori.core.cfg['templates'][i][T_S_CHANGE_CB_KEY]
               ):
@@ -1375,8 +1368,7 @@ def validate_config():
         # dest-DB don't-replicate flag
         nori.setting_check_type(('templates', i, T_D_NO_REPL_KEY), bool)
         # dest-DB change callbacks
-        nori.setting_check_type(('templates', i, T_D_CHANGE_CB_KEY),
-                                nori.core.CONTAINER_TYPES)
+        nori.setting_check_type(('templates', i, T_D_CHANGE_CB_KEY), tuple)
         for j, cb_t in enumerate(
                 nori.core.cfg['templates'][i][T_D_CHANGE_CB_KEY]
               ):
