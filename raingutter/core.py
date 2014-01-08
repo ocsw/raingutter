@@ -5890,7 +5890,6 @@ def run_mode_hook():
                    log_diff(), do_diff_report(), do_diff_sync(),
                    (functions in templates), (callback functions)
         modules: atexit, nori
-        Python: 2.0/3.2, for callable()
 
     """
 
@@ -5981,7 +5980,7 @@ def run_mode_hook():
         s_rows = []
         for s_row_raw in s_rows_raw:
             # apply transform
-            if to_dest_func and callable(to_dest_func):
+            if to_dest_func:
                 s_num_keys, s_row = to_dest_func(template, s_row_raw)
             else:
                 s_num_keys = len(source_kwargs['key_cv'])
@@ -6011,7 +6010,7 @@ def run_mode_hook():
         d_rows = []
         for d_row_raw in d_rows_raw:
             # apply transform
-            if to_source_func and callable(to_source_func):
+            if to_source_func:
                 d_num_keys, d_row = to_source_func(template, d_row_raw)
             else:
                 d_num_keys = len(dest_kwargs['key_cv'])
