@@ -320,6 +320,10 @@ any other *args and **kwargs:
 entity in the opposite database, and 'values' are the actual content to
 diff or sync.)
 
+The key_cv and value_cv sequences must be provided initially in the argument
+settings for each template (see below), but are then manipulated by the
+script.
+
 Note that the format of the column names may differ between the two
 databases, and the values may also require transformation (see below).
 What matters is that the sets of key and value columns for each database
@@ -642,7 +646,11 @@ diff or sync.
 
 {2}, {6}:
 
-    See the description for the source_query_func setting.
+    The kwargs dicts must contain key_cv and value_cv sequences; see the
+    description for the source_query_func setting.  All other values are
+    specific to the query functions supplied in the source_query_func and
+    dest_query_func settings.  See also the source_query_validator and
+    dest_query_validator settings.
 
 {3}, {7}:
 
