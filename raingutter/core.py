@@ -1116,6 +1116,7 @@ def validate_config():
     nori.setting_check_not_empty('templates')
     for i, template in enumerate(nori.core.cfg['templates']):
         nori.setting_check_type(('templates', i), nori.core.MAPPING_TYPES)
+        # bogus elements
         for k in template:
             if k not in T_KEYS:
                 nori.err_exit(
@@ -1131,7 +1132,7 @@ def validate_config():
         nori.setting_check_type(('templates', i, T_MULTIPLE_KEY), bool)
         # source-DB query function
         nori.setting_check_callable(('templates', i, T_S_QUERY_FUNC_KEY),
-                                    may_be_none=True)
+                                    may_be_none=False)
         # source-DB query function arguments
         nori.setting_check_type(('templates', i, T_S_QUERY_ARGS_KEY),
                                 nori.core.CONTAINER_TYPES)
@@ -1150,7 +1151,7 @@ def validate_config():
                                     may_be_none=True)
         # dest-DB query function
         nori.setting_check_callable(('templates', i, T_D_QUERY_FUNC_KEY),
-                                    may_be_none=True)
+                                    may_be_none=False)
         # dest-DB query function arguments
         nori.setting_check_type(('templates', i, T_D_QUERY_ARGS_KEY),
                                 nori.core.CONTAINER_TYPES)
