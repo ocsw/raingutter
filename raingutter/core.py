@@ -1584,9 +1584,8 @@ def init_reporting():
 # higher-level functions explain what's going on)
 #
 
-def update_insert_dispatcher(mode, db_obj, db_cur, dest_type, dest_func,
-                             dest_args, dest_kwargs, new_key_cv,
-                             new_value_cv):
+def update_insert_dispatcher(mode, db_obj, db_cur, dest_func, dest_args,
+                             dest_kwargs, new_key_cv, new_value_cv):
 
     """
     Call database query functions separately for each value_cv tuple.
@@ -1600,8 +1599,6 @@ def update_insert_dispatcher(mode, db_obj, db_cur, dest_type, dest_func,
         mode: 'read', 'update', or 'insert'
         db_obj: the database connection object to use
         db_cur: the database cursor object to use
-        dest_type: the type of the destination database ('generic' or
-                   'drupal')
         dest_func: the query function to use
         dest_args: the list of positional parameters to supply to the
                    query function, from the appropriate template
@@ -1688,8 +1685,8 @@ probably required.
             'inserting them now.'.format(msg_start)
         )
         redo_status = update_insert_dispatcher(
-            'insert', db_obj, db_cur, dest_type, dest_func, dest_args,
-            dest_kwargs, new_key_cv, redo_value_cv
+            'insert', db_obj, db_cur, dest_func, dest_args, dest_kwargs,
+            new_key_cv, redo_value_cv
         )
         if redo_status is None:
             if status is None:
@@ -5803,8 +5800,8 @@ skipping this {0}.""".format(mode)
     # do the updates / inserts
     global_callbacks_needed = False
     status = update_insert_dispatcher(
-        mode, d_db, d_cur, dest_type, dest_func, dest_args, dest_kwargs,
-        new_key_cv, new_value_cv
+        mode, d_db, d_cur, dest_func, dest_args, dest_kwargs, new_key_cv,
+        new_value_cv
     )
     if status is not None:
         global_callbacks_needed = True
