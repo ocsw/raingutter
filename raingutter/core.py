@@ -568,6 +568,24 @@ See source_query_func for more information.
     ),
 )
 
+nori.core.config_settings['dest_query_defaulter'] = dict(
+    descr=(
+'''
+The function to call to apply defaults to each template's arguments to the
+dest-DB query function (see below), or None.
+
+See source_query_defaulter for more information.
+'''
+    ),
+    # see apply_config_defaults() for default
+    default_descr=(
+"""depends on dest_type;
+'generic': {0}.apply_generic_arg_defaults
+'drupal': None""" .
+        format(PACKAGE_NAME)
+    ),
+)
+
 nori.core.config_settings['dest_query_validator'] = dict(
     descr=(
 '''
