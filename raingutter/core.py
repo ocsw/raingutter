@@ -247,7 +247,10 @@ The functions are called once, right before the diff / sync is started, in
 order.
 '''
     ),
-    default=[],
+    # see apply_config_defaults() for default
+    default_descr=(
+        '[({0}.pre_action_drupal_readonly, [], {{}})]'.format(PACKAGE_NAME)
+    ),
 )
 
 nori.core.config_settings['post_action_callbacks'] = dict(
@@ -283,7 +286,11 @@ pre-action callbacks will all be run before these functions, since they are
 registered before the pre-action functions are called.
 '''
     ),
-    default=[],
+    # see apply_config_defaults() for default
+    default_descr=(
+        '[({0}.post_action_drupal_readonly, [], {{}}, True)]' .
+        format(PACKAGE_NAME)
+    ),
 )
 
 nori.core.config_settings['source_type'] = dict(
@@ -994,6 +1001,16 @@ def apply_config_defaults():
 
     # don't worry about broken settings, validate_config() will take
     # care of them
+
+    if 'pre_action_callbacks' not in nori.cfg:
+        nori.cfg['pre_action_callbacks'] = [
+            (pre_action_drupal_readonly, [], {})
+        ]
+
+    if 'post_action_callbacks' not in nori.cfg:
+        nori.cfg['post_action_callbacks'] = [
+            (post_action_drupal_readonly, [], {}, True)
+        ]
 
     if 'source_type' not in nori.cfg:
         nori.cfg['source_type'] = 'generic'
