@@ -1085,8 +1085,7 @@ def apply_config_defaults():
     if 'source_type' not in nori.cfg:
         nori.cfg['source_type'] = 'generic'
 
-    if ('source_query_func' not in nori.cfg or
-          nori.cfg['source_query_func'] is None):
+    if 'source_query_func' not in nori.cfg:
         if nori.core.cfg['source_type'] == 'generic':
             nori.core.cfg['source_query_func'] = generic_db_query
         elif nori.core.cfg['source_type'] == 'drupal':
@@ -1100,8 +1099,7 @@ def apply_config_defaults():
         elif nori.core.cfg['source_type'] == 'drupal':
             nori.core.cfg['source_query_defaulter'] = None
 
-    if ('source_query_validator' not in nori.cfg or
-          nori.cfg['source_query_validator'] is None):
+    if 'source_query_validator' not in nori.cfg:
         if nori.core.cfg['source_type'] == 'generic':
             nori.core.cfg['source_query_validator'] = validate_generic_args
         elif nori.core.cfg['source_type'] == 'drupal':
@@ -1126,8 +1124,7 @@ def apply_config_defaults():
     if 'dest_type' not in nori.cfg:
         nori.cfg['dest_type'] = 'generic'
 
-    if ('dest_query_func' not in nori.cfg or
-          nori.cfg['dest_query_func'] is None):
+    if 'dest_query_func' not in nori.cfg:
         if nori.core.cfg['dest_type'] == 'generic':
             nori.core.cfg['dest_query_func'] = generic_db_query
         elif nori.core.cfg['dest_type'] == 'drupal':
@@ -1141,8 +1138,7 @@ def apply_config_defaults():
         elif nori.core.cfg['dest_type'] == 'drupal':
             nori.core.cfg['dest_query_defaulter'] = None
 
-    if ('dest_query_validator' not in nori.cfg or
-          nori.cfg['dest_query_validator'] is None):
+    if 'dest_query_validator' not in nori.cfg:
         if nori.core.cfg['dest_type'] == 'generic':
             nori.core.cfg['dest_query_validator'] = validate_generic_args
         elif nori.core.cfg['dest_type'] == 'drupal':
