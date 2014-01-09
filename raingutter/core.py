@@ -388,6 +388,29 @@ looping over the value_cv columns.)
     ),
 )
 
+nori.core.config_settings['source_query_defaulter'] = dict(
+    descr=(
+'''
+The function to call to apply defaults to each template's arguments to the
+source-DB query function (see below), or None.
+
+If supplied, the function must accept the following arguments:
+    t_args: the *args element of the template's source query arguments
+    t_kwargs: the **kwargs element of the template's source query arguments
+
+Note that function will only be called on a template's query arguments if
+they exist and are of the correct types (e.g., t_kwargs is a dict), etc.
+'''
+    ),
+    # see apply_config_defaults() for default
+    default_descr=(
+"""depends on source_type;
+'generic': {0}.apply_generic_arg_defaults
+'drupal': None""" .
+        format(PACKAGE_NAME)
+    ),
+)
+
 nori.core.config_settings['source_query_validator'] = dict(
     descr=(
 '''
@@ -977,6 +1000,32 @@ Ignored if send_report_emails is False.
 # config defaults and validation
 #################################
 
+def apply_generic_arg_defaults(t_args, t_kwargs):
+
+    """
+    Apply defaults to generic query function arguments.
+
+    Parameters:
+        see the description of the source_query_defaulter setting
+
+    """
+
+    # don't worry about broken settings, validate_generic_args() will
+    # take care of them
+
+    if 'where_str' not in t_kwargs:
+        t_kwargs['where_str'] = None
+
+    if 'where_args' not in t_kwargs:
+        t_kwargs['where_args'] = []
+
+    if 'more_str' not in t_kwargs:
+        t_kwargs['more_str'] = None
+
+    if 'more_args' not in t_kwargs:
+        t_kwargs['more_args'] = []
+
+
 def apply_config_defaults():
 
     """
@@ -984,11 +1033,11 @@ def apply_config_defaults():
 
     Dependencies:
         config settings: source_type, source_query_func,
-                         source_query_validator,
+                         source_query_defaulter, source_query_validator,
                          source_template_change_callbacks,
                          source_global_change_callbacks,
                          dest_type, dest_query_func,
-                         dest_query_validator,
+                         dest_query_defaulter, dest_query_validator,
                          dest_template_change_callbacks,
                          dest_global_change_callbacks, templates
         globals: (almost all of) T_*
@@ -996,6 +1045,7 @@ def apply_config_defaults():
                    validate_generic_args(), validate_drupal_args(),
                    drupal_timestamp_callback(), drupal_cache_callback()
         modules: nori
+        Python: 2.0/3.2, for callable()
 
     """
 
@@ -1021,6 +1071,14 @@ def apply_config_defaults():
             nori.core.cfg['source_query_func'] = generic_db_query
         elif nori.core.cfg['source_type'] == 'drupal':
             nori.core.cfg['source_query_func'] = drupal_db_query
+
+    if 'source_query_defaulter' not in nori.cfg:
+        if nori.core.cfg['source_type'] == 'generic':
+            nori.core.cfg['source_query_defaulter'] = (
+                apply_generic_arg_defaults
+            )
+        elif nori.core.cfg['source_type'] == 'drupal':
+            nori.core.cfg['source_query_defaulter'] = None
 
     if ('source_query_validator' not in nori.cfg or
           nori.cfg['source_query_validator'] is None):
@@ -1054,6 +1112,14 @@ def apply_config_defaults():
             nori.core.cfg['dest_query_func'] = generic_db_query
         elif nori.core.cfg['dest_type'] == 'drupal':
             nori.core.cfg['dest_query_func'] = drupal_db_query
+
+    if 'dest_query_defaulter' not in nori.cfg:
+        if nori.core.cfg['dest_type'] == 'generic':
+            nori.core.cfg['dest_query_defaulter'] = (
+                apply_generic_arg_defaults
+            )
+        elif nori.core.cfg['dest_type'] == 'drupal':
+            nori.core.cfg['dest_query_defaulter'] = None
 
     if ('dest_query_validator' not in nori.cfg or
           nori.cfg['dest_query_validator'] is None):
@@ -1092,6 +1158,15 @@ def apply_config_defaults():
         if T_MULTIPLE_KEY not in template:
             nori.core.cfg['templates'][i][T_MULTIPLE_KEY] = False
 
+        if T_S_QUERY_ARGS_KEY in template:
+            args_t = template[T_S_QUERY_ARGS_KEY]
+            defaulter = nori.core.cfg['source_query_defaulter']
+            if (isinstance(args_t, tuple) and len(args_t) >=2 and
+                  isinstance(args_t[0], nori.core.CONTAINER_TYPES) and
+                  isinstance(args_t[1], nori.core.MAPPING_TYPES) and
+                  defaulter and callable(defaulter)):
+                defaulter(args_t[0], args_t[1])
+
         if T_TO_D_FUNC_KEY not in template:
             nori.core.cfg['templates'][i][T_TO_D_FUNC_KEY] = None
 
@@ -1100,6 +1175,15 @@ def apply_config_defaults():
 
         if T_S_CHANGE_CB_KEY not in template:
             nori.core.cfg['templates'][i][T_S_CHANGE_CB_KEY] = []
+
+        if T_D_QUERY_ARGS_KEY in template:
+            args_t = template[T_D_QUERY_ARGS_KEY]
+            defaulter = nori.core.cfg['dest_query_defaulter']
+            if (isinstance(args_t, tuple) and len(args_t) >=2 and
+                  isinstance(args_t[0], nori.core.CONTAINER_TYPES) and
+                  isinstance(args_t[1], nori.core.MAPPING_TYPES) and
+                  defaulter and callable(defaulter)):
+                defaulter(args_t[0], args_t[1])
 
         if T_TO_S_FUNC_KEY not in template:
             nori.core.cfg['templates'][i][T_TO_S_FUNC_KEY] = None
@@ -1427,11 +1511,13 @@ def validate_config():
         nori.setting_check_type(('post_action_callbacks', i, 3), bool)
     nori.setting_check_list('source_type', ['generic', 'drupal'])
     nori.setting_check_callable('source_query_func', may_be_none=False)
+    nori.setting_check_callable('source_query_defaulter', may_be_none=True)
     nori.setting_check_callable('source_query_validator', may_be_none=False)
     nori.setting_check_callbacks('source_template_change_callbacks')
     nori.setting_check_callbacks('source_global_change_callbacks')
     nori.setting_check_list('dest_type', ['generic', 'drupal'])
     nori.setting_check_callable('dest_query_func', may_be_none=False)
+    nori.setting_check_callable('dest_query_defaulter', may_be_none=True)
     nori.setting_check_callable('dest_query_validator', may_be_none=False)
     nori.setting_check_callbacks('dest_template_change_callbacks')
     nori.setting_check_callbacks('dest_global_change_callbacks')
