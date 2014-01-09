@@ -591,6 +591,8 @@ nori.core.config_settings['dest_query_validator'] = dict(
 '''
 The function to call to validate each template's arguments to the dest-DB
 query function.
+
+See source_query_validator for more information.
 '''
     ),
     # see apply_config_defaults() for default
