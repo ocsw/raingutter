@@ -5180,7 +5180,7 @@ Skipping insert; manual intervention required.''' .
             ', ' + ', '.join(map(operator.itemgetter(0), extra_data))
         )
         extra_placeholders = (
-            ', ' + ', '.join(map(lambda x: '%s', extra_data))
+            ', ' + ', '.join(map(lambda: '%s', extra_data))
         )
         extra_values = map(operator.itemgetter(1), extra_data)
 
