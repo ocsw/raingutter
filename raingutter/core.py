@@ -1404,75 +1404,20 @@ def validate_config():
     nori.setting_check_list('action', ['diff', 'sync'])
     nori.setting_check_type('reverse', bool)
     nori.setting_check_type('bidir', bool)
-    nori.setting_check_type('pre_action_callbacks',
-                            nori.core.CONTAINER_TYPES)
-    for i, cb_t in enumerate(nori.core.cfg['pre_action_callbacks']):
-        idx_t = ('pre_action_callbacks', i)
-        nori.setting_check_type(idx_t, tuple)
-        nori.setting_check_len(idx_t, 3, 3)
-        nori.setting_check_callable(idx_t + (0, ), may_be_none=False)
-        nori.setting_check_type(idx_t + (1, ), nori.core.CONTAINER_TYPES)
-        nori.setting_check_type(idx_t + (2, ), nori.core.MAPPING_TYPES)
-    nori.setting_check_type('post_action_callbacks',
-                            nori.core.CONTAINER_TYPES)
+    nori.setting_check_callbacks('pre_action_callbacks')
+    nori.setting_check_callbacks('post_action_callbacks', 1, 1)
     for i, cb_t in enumerate(nori.core.cfg['post_action_callbacks']):
-        idx_t = ('post_action_callbacks', i)
-        nori.setting_check_type(idx_t, tuple)
-        nori.setting_check_len(idx_t, 4, 4)
-        nori.setting_check_callable(idx_t + (0, ), may_be_none=False)
-        nori.setting_check_type(idx_t + (1, ), nori.core.CONTAINER_TYPES)
-        nori.setting_check_type(idx_t + (2, ), nori.core.MAPPING_TYPES)
-        nori.setting_check_type(idx_t + (3, ), bool)
+        nori.setting_check_type(('post_action_callbacks', i, 3), bool)
     nori.setting_check_list('source_type', ['generic', 'drupal'])
     nori.setting_check_callable('source_query_func', may_be_none=False)
     nori.setting_check_callable('source_query_validator', may_be_none=False)
-    nori.setting_check_type('source_template_change_callbacks',
-                            nori.core.CONTAINER_TYPES)
-    for i, cb_t in enumerate(
-            nori.core.cfg['source_template_change_callbacks']
-          ):
-        idx_t = ('source_template_change_callbacks', i)
-        nori.setting_check_type(idx_t, tuple)
-        nori.setting_check_len(idx_t, 3, 3)
-        nori.setting_check_callable(idx_t + (0, ), may_be_none=False)
-        nori.setting_check_type(idx_t + (1, ), nori.core.CONTAINER_TYPES)
-        nori.setting_check_type(idx_t + (2, ), nori.core.MAPPING_TYPES)
-    nori.setting_check_type('source_global_change_callbacks',
-                            nori.core.CONTAINER_TYPES)
-    for i, cb_t in enumerate(
-            nori.core.cfg['source_global_change_callbacks']
-          ):
-        idx_t = ('source_global_change_callbacks', i)
-        nori.setting_check_type(idx_t, tuple)
-        nori.setting_check_len(idx_t, 3, 3)
-        nori.setting_check_callable(idx_t + (0, ), may_be_none=False)
-        nori.setting_check_type(idx_t + (1, ), nori.core.CONTAINER_TYPES)
-        nori.setting_check_type(idx_t + (2, ), nori.core.MAPPING_TYPES)
+    nori.setting_check_callbacks('source_template_change_callbacks')
+    nori.setting_check_callbacks('source_global_change_callbacks')
     nori.setting_check_list('dest_type', ['generic', 'drupal'])
     nori.setting_check_callable('dest_query_func', may_be_none=False)
     nori.setting_check_callable('dest_query_validator', may_be_none=False)
-    nori.setting_check_type('dest_template_change_callbacks',
-                            nori.core.CONTAINER_TYPES)
-    for i, cb_t in enumerate(
-            nori.core.cfg['dest_template_change_callbacks']
-          ):
-        idx_t = ('dest_template_change_callbacks', i)
-        nori.setting_check_type(idx_t, tuple)
-        nori.setting_check_len(idx_t, 3, 3)
-        nori.setting_check_callable(idx_t + (0, ), may_be_none=False)
-        nori.setting_check_type(idx_t + (1, ), nori.core.CONTAINER_TYPES)
-        nori.setting_check_type(idx_t + (2, ), nori.core.MAPPING_TYPES)
-    nori.setting_check_type('dest_global_change_callbacks',
-                            nori.core.CONTAINER_TYPES)
-    for i, cb_t in enumerate(
-            nori.core.cfg['dest_global_change_callbacks']
-          ):
-        idx_t = ('dest_global_change_callbacks', i)
-        nori.setting_check_type(idx_t, tuple)
-        nori.setting_check_len(idx_t, 3, 3)
-        nori.setting_check_callable(idx_t + (0, ), may_be_none=False)
-        nori.setting_check_type(idx_t + (1, ), nori.core.CONTAINER_TYPES)
-        nori.setting_check_type(idx_t + (2, ), nori.core.MAPPING_TYPES)
+    nori.setting_check_callbacks('dest_template_change_callbacks')
+    nori.setting_check_callbacks('dest_global_change_callbacks')
     nori.setting_check_list('template_mode', ['all', 'include', 'exclude'])
     if nori.core.cfg['template_mode'] != 'all':
         nori.setting_check_not_empty('template_list')
@@ -1502,57 +1447,23 @@ def validate_config():
         # multiple-valued value columns?
         nori.setting_check_type(('templates', i, T_MULTIPLE_KEY), bool)
         # source-DB query function arguments
-        nori.setting_check_type(('templates', i, T_S_QUERY_ARGS_KEY), tuple)
-        nori.setting_check_len(('templates', i, T_S_QUERY_ARGS_KEY), 2, 2)
-        nori.setting_check_type(('templates', i, T_S_QUERY_ARGS_KEY, 0),
-                                nori.core.CONTAINER_TYPES)
-        nori.setting_check_type(('templates', i, T_S_QUERY_ARGS_KEY, 1),
-                                nori.core.MAPPING_TYPES)
+        nori.setting_check_arg_tuple(('templates', i, T_S_QUERY_ARGS_KEY))
         # to-dest transform function
         nori.setting_check_callable(('templates', i, T_TO_D_FUNC_KEY),
                                     may_be_none=True)
         # source-DB don't-replicate flag
         nori.setting_check_type(('templates', i, T_S_NO_REPL_KEY), bool)
         # source-DB change callbacks
-        nori.setting_check_type(('templates', i, T_S_CHANGE_CB_KEY),
-                                nori.core.CONTAINER_TYPES)
-        for j, cb_t in enumerate(
-                nori.core.cfg['templates'][i][T_S_CHANGE_CB_KEY]
-              ):
-            idx_t = ('templates', i, T_S_CHANGE_CB_KEY, j)
-            nori.setting_check_type(idx_t, tuple)
-            nori.setting_check_len(idx_t, 3, 3)
-            nori.setting_check_callable(idx_t + (0, ), may_be_none=False)
-            nori.setting_check_type(idx_t + (1, ),
-                                    nori.core.CONTAINER_TYPES)
-            nori.setting_check_type(idx_t + (2, ),
-                                    nori.core.MAPPING_TYPES)
+        nori.setting_check_callbacks(('templates', i, T_S_CHANGE_CB_KEY))
         # dest-DB query function arguments
-        nori.setting_check_type(('templates', i, T_D_QUERY_ARGS_KEY), tuple)
-        nori.setting_check_len(('templates', i, T_D_QUERY_ARGS_KEY), 2, 2)
-        nori.setting_check_type(('templates', i, T_D_QUERY_ARGS_KEY, 0),
-                                nori.core.CONTAINER_TYPES)
-        nori.setting_check_type(('templates', i, T_D_QUERY_ARGS_KEY, 1),
-                                nori.core.MAPPING_TYPES)
+        nori.setting_check_arg_tuple(('templates', i, T_D_QUERY_ARGS_KEY))
         # to-source transform function
         nori.setting_check_callable(('templates', i, T_TO_S_FUNC_KEY),
                                     may_be_none=True)
         # dest-DB don't-replicate flag
         nori.setting_check_type(('templates', i, T_D_NO_REPL_KEY), bool)
         # dest-DB change callbacks
-        nori.setting_check_type(('templates', i, T_D_CHANGE_CB_KEY),
-                                nori.core.CONTAINER_TYPES)
-        for j, cb_t in enumerate(
-                nori.core.cfg['templates'][i][T_D_CHANGE_CB_KEY]
-              ):
-            idx_t = ('templates', i, T_D_CHANGE_CB_KEY, j)
-            nori.setting_check_type(idx_t, tuple)
-            nori.setting_check_len(idx_t, 3, 3)
-            nori.setting_check_callable(idx_t + (0, ), may_be_none=False)
-            nori.setting_check_type(idx_t + (1, ),
-                                    nori.core.CONTAINER_TYPES)
-            nori.setting_check_type(idx_t + (2, ),
-                                    nori.core.MAPPING_TYPES)
+        nori.setting_check_callbacks(('templates', i, T_D_CHANGE_CB_KEY))
         # key mode
         nori.setting_check_list(('templates', i, T_KEY_MODE_KEY),
                                 ['all', 'include', 'exclude'])
