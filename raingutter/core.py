@@ -1178,7 +1178,7 @@ def apply_config_defaults():
             args_t = template[T_S_QUERY_ARGS_KEY]
             defaulter = nori.core.cfg['source_query_defaulter']
             if (isinstance(args_t, tuple) and len(args_t) >=2 and
-                  isinstance(args_t[0], nori.core.CONTAINER_TYPES) and
+                  isinstance(args_t[0], nori.core.MAIN_SEQUENCE_TYPES) and
                   isinstance(args_t[1], nori.core.MAPPING_TYPES) and
                   defaulter and callable(defaulter)):
                 defaulter(args_t[0], args_t[1])
@@ -1196,7 +1196,7 @@ def apply_config_defaults():
             args_t = template[T_D_QUERY_ARGS_KEY]
             defaulter = nori.core.cfg['dest_query_defaulter']
             if (isinstance(args_t, tuple) and len(args_t) >=2 and
-                  isinstance(args_t[0], nori.core.CONTAINER_TYPES) and
+                  isinstance(args_t[0], nori.core.MAIN_SEQUENCE_TYPES) and
                   isinstance(args_t[1], nori.core.MAPPING_TYPES) and
                   defaulter and callable(defaulter)):
                 defaulter(args_t[0], args_t[1])
@@ -1279,22 +1279,26 @@ def validate_generic_args(sd, args_idx, args_t, t_index):
     validate_generic_chain(key_idx, key_cv, value_idx, value_cv)
 
     # the rest
-    nori.setting_check_type(
-        args_idx + (1, 'tables'),
-        nori.core.CONTAINER_TYPES + nori.core.STRING_TYPES
-    )
+    if nori.setting_check_type(
+           args_idx + (1, 'tables'),
+           nori.core.MAIN_SEQUENCE_TYPES + nori.core.STRING_TYPES
+         ) in nori.core.MAIN_SEQUENCE_TYPES:
+        nori.setting_check_not_empty(args_idx + (1, 'tables'))
+        nori.setting_check_no_blanks(args_idx + (1, 'tables'))
+    else:
+        nori.setting_check_not_blank(args_idx + (1, 'tables'))
     nori.setting_check_type(
         args_idx + (1, 'where_str'),
         nori.core.STRING_TYPES + (nori.core.NONE_TYPE, )
     )
     nori.setting_check_type(args_idx + (1, 'where_args'),
-                            nori.core.CONTAINER_TYPES)
+                            nori.core.MAIN_SEQUENCE_TYPES)
     nori.setting_check_type(
         args_idx + (1, 'more_str'),
         nori.core.STRING_TYPES + (nori.core.NONE_TYPE, )
     )
     nori.setting_check_type(args_idx + (1, 'more_args'),
-                            nori.core.CONTAINER_TYPES)
+                            nori.core.MAIN_SEQUENCE_TYPES)
 
 
 def validate_drupal_cv(cv_index, cv, kv):
@@ -1319,8 +1323,7 @@ def validate_drupal_cv(cv_index, cv, kv):
     data_type_index = cv_index + (1, )
     data_type = cv[1]
 
-    nori.setting_check_type(ident_index, tuple)
-    nori.setting_check_not_empty(ident_index)
+    nori.setting_check_not_empty(ident_index, types=tuple)
     nori.setting_check_list(
         ident_index + (0, ),
         ['node', 'fc', 'relation', 'field', 'title', 'label']
@@ -1329,15 +1332,13 @@ def validate_drupal_cv(cv_index, cv, kv):
     if ident[0] == 'node':
         nori.setting_check_length(ident_index, 3, 3)
         if kv == 'k':
-            nori.setting_check_type(
-                ident_index + (1, ),
-                nori.core.STRING_TYPES
-            )
+            nori.setting_check_not_blank(ident_index + (1, ))
         else:
-            nori.setting_check_type(
-                ident_index + (1, ),
-                nori.core.STRING_TYPES + (nori.core.NONE_TYPE, )
-            )
+            if nori.setting_check_type(
+                    ident_index + (1, ),
+                    nori.core.STRING_TYPES + (nori.core.NONE_TYPE, )
+                  ) is not nori.core.NONE_TYPE:
+                nori.setting_check_not_blank(ident_index + (1, ))
         nori.setting_check_list(ident_index + (2, ), ['id', 'title'])
     elif ident[0] == 'fc':
         nori.setting_check_length(ident_index, 3, 3)
@@ -1548,7 +1549,9 @@ def validate_config():
         nori.setting_check_not_empty('key_list')
 
     # templates: general
-    nori.setting_check_not_empty('templates')
+    nori.setting_check_not_empty(
+        'templates', types=nori.core.MAIN_SEQUENCE_TYPES
+    )
     for i, template in enumerate(nori.core.cfg['templates']):
         nori.setting_check_type(('templates', i), nori.core.MAPPING_TYPES)
         # bogus elements
@@ -1601,11 +1604,13 @@ def validate_config():
             # key_cv, value_cv (somewhat)
             for cv_str in ['key_cv', 'value_cv']:
                 cv_idx = args_idx + (1, cv_str)
-                nori.setting_check_not_empty(cv_idx)
+                nori.setting_check_not_empty(
+                    cv_idx, types=nori.core.MAIN_SEQUENCE_TYPES
+                )
                 cv_seq = args_t[1][cv_str]
                 for j, cv in enumerate(cv_seq):
-                    nori.setting_check_type(cv_idx + (j, ), tuple)
-                    nori.setting_check_length(cv_idx + (j, ), 2, 3)
+                    nori.setting_check_length(cv_idx + (j, ), 2, 3,
+                                              types=tuple)
             # the rest of the arguments
             nori.core.cfg[validator_key](sd, args_idx, args_t, i)
 
@@ -1615,7 +1620,7 @@ def validate_config():
     if nori.core.cfg['send_report_emails']:
         nori.setting_check_not_blank('report_emails_from')
         nori.setting_check_type('report_emails_to', list)
-        nori.setting_check_not_empty('report_emails_to')
+        nori.setting_check_not_empty('report_emails_to', types=list)
         nori.setting_check_no_blanks('report_emails_to')
         nori.setting_check_type('report_emails_subject',
                                 nori.core.STRING_TYPES)
@@ -1926,7 +1931,7 @@ def generic_db_read(db_obj, db_cur, tables, key_cv, value_cv,
                                key_cv + value_cv))
     query_str += '\n'
     query_str += 'FROM '
-    if isinstance(tables, nori.core.CONTAINER_TYPES):
+    if isinstance(tables, nori.core.MAIN_SEQUENCE_TYPES):
         query_str += ', '.join(tables)
     else:
         query_str += tables
@@ -1997,7 +2002,7 @@ Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, tables, key_cv, value_cv,
     # assemble the query string and argument list
     query_args = []
     query_str = 'UPDATE '
-    if isinstance(tables, nori.core.CONTAINER_TYPES):
+    if isinstance(tables, nori.core.MAIN_SEQUENCE_TYPES):
         query_str += ', '.join(tables)
     else:
         query_str += tables
@@ -2060,7 +2065,7 @@ Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, tables, key_cv, value_cv,
     # assemble the query string and argument list
     query_args = []
     query_str = 'INSERT INTO '
-#    if isinstance(tables, nori.core.CONTAINER_TYPES):
+#    if isinstance(tables, nori.core.MAIN_SEQUENCE_TYPES):
 #        query_str += ', '.join(tables)
 #    else:
 #        query_str += tables
