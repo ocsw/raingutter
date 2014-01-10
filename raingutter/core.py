@@ -1254,7 +1254,7 @@ def validate_generic_args(sd, args_idx, args_t, t_index):
     """
 
     # no *args
-    nori.setting_check_len(args_idx + (0, ), 0, 0)
+    nori.setting_check_length(args_idx + (0, ), 0, 0)
 
     # no bogus **kwargs
     valid_keys = [
@@ -1327,7 +1327,7 @@ def validate_drupal_cv(cv_index, cv, kv):
     )
 
     if ident[0] == 'node':
-        nori.setting_check_len(ident_index, 3, 3)
+        nori.setting_check_length(ident_index, 3, 3)
         if kv == 'k':
             nori.setting_check_type(
                 ident_index + (1, ),
@@ -1340,21 +1340,21 @@ def validate_drupal_cv(cv_index, cv, kv):
             )
         nori.setting_check_list(ident_index + (2, ), ['id', 'title'])
     elif ident[0] == 'fc':
-        nori.setting_check_len(ident_index, 3, 3)
+        nori.setting_check_length(ident_index, 3, 3)
         nori.setting_check_not_blank(ident_index + (1, ))
         nori.setting_check_list(ident_index + (2, ), ['id', 'label'])
     elif ident[0] == 'relation':
-        nori.setting_check_len(ident_index, 2, 3)
+        nori.setting_check_length(ident_index, 2, 3)
         nori.setting_check_not_blank(ident_index + (1, ))
         if len(ident) > 2:
             nori.setting_check_not_blank(ident_index + (2, ))
     elif ident[0] == 'field':
-        nori.setting_check_len(ident_index, 2, 2)
+        nori.setting_check_length(ident_index, 2, 2)
         nori.setting_check_not_blank(ident_index + (1, ))
     elif ident[0] == 'title':
-        nori.setting_check_len(ident_index, 1, 1)
+        nori.setting_check_length(ident_index, 1, 1)
     elif ident[0] == 'label':
-        nori.setting_check_len(ident_index, 1, 1)
+        nori.setting_check_length(ident_index, 1, 1)
 
     if ident[0] != 'relation' or len(ident) > 2:
         nori.setting_check_not_blank(data_type_index)
@@ -1471,7 +1471,7 @@ def validate_drupal_args(sd, args_idx, args_t, t_index):
     """
 
     # no *args
-    nori.setting_check_len(args_idx + (0, ), 0, 0)
+    nori.setting_check_length(args_idx + (0, ), 0, 0)
 
     # no bogus **kwargs
     valid_keys = ['key_cv', 'value_cv']
@@ -1605,7 +1605,7 @@ def validate_config():
                 cv_seq = args_t[1][cv_str]
                 for j, cv in enumerate(cv_seq):
                     nori.setting_check_type(cv_idx + (j, ), tuple)
-                    nori.setting_check_len(cv_idx + (j, ), 2, 3)
+                    nori.setting_check_length(cv_idx + (j, ), 2, 3)
             # the rest of the arguments
             nori.core.cfg[validator_key](sd, args_idx, args_t, i)
 
@@ -1622,7 +1622,7 @@ def validate_config():
         if nori.setting_check_type(
                'report_emails_host', nori.core.STRING_TYPES + (tuple, )
               ) == tuple:
-            nori.setting_check_len('report_emails_host', 2, 2)
+            nori.setting_check_length('report_emails_host', 2, 2)
             nori.setting_check_not_blank(('report_emails_host', 0))
             nori.setting_check_integer(('report_emails_host', 1), 1, 65535)
         else:
@@ -1630,12 +1630,12 @@ def validate_config():
         if nori.setting_check_type(
                'report_emails_cred', (nori.core.NONE_TYPE, tuple)
               ) is not nori.core.NONE_TYPE:
-            nori.setting_check_len('report_emails_cred', 2, 2)
+            nori.setting_check_length('report_emails_cred', 2, 2)
             nori.setting_check_no_blanks('report_emails_cred')
         if nori.setting_check_type(
                'report_emails_sec', (nori.core.NONE_TYPE, tuple)
               ) is not nori.core.NONE_TYPE:
-            nori.setting_check_len('report_emails_sec', 0, 2)
+            nori.setting_check_length('report_emails_sec', 0, 2)
             for i, f in enumerate(nori.core.cfg['report_emails_sec']):
                 nori.setting_check_file_read(('report_emails_sec', i))
 
