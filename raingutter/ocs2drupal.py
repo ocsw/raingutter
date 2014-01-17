@@ -82,7 +82,7 @@ LEFT JOIN memories ON memories.HARDWARE_ID = hardware.ID'''
             ('bios.BDATE', 'string',),
             ('hardware.PROCESSORT', 'string',),
             ('hardware.PROCESSORN', 'integer',),
-            ('SUM(CONVERT(memories.CAPACITY, DECIMAL))/1024', 'decimal',),
+            ('SUM(CONVERT(memories.CAPACITY, DECIMAL)) / 1024', 'decimal',),
             ('hardware.OSNAME', 'string',),
             ('hardware.OSVERSION', 'string',),
             ('hardware.OSCOMMENTS', 'string',),  # kernel string
@@ -95,7 +95,8 @@ LEFT JOIN memories ON memories.HARDWARE_ID = hardware.ID'''
      LEFT JOIN accountinfo ON accountinfo.HARDWARE_ID = hardware.ID
      GROUP BY accountinfo.TAG)
 AND (memories.TYPE <> 'FLASH' OR memories.TYPE IS NULL)
-AND (memories.CAPACITY <> 0 OR memories.CAPACITY IS NULL)"""
+AND ((memories.CAPACITY <> '0' AND memories.CAPACITY <> 'No')
+     OR memories.CAPACITY IS NULL)"""
         ),
         where_args=[],
         more_str='GROUP BY hardware.ID ORDER BY accountinfo.TAG',
@@ -136,8 +137,7 @@ LEFT JOIN networks ON networks.HARDWARE_ID = hardware.ID'''
             ('accountinfo.TAG', 'string',),
         ],
         value_cv=[
-            ('INET_ATON(MIN(CONVERT(networks.IPGATEWAY,
-                                    UNSIGNED INTEGER)))', 'ip',),
+            ('MIN(INET_ATON(networks.IPGATEWAY))', 'ip',),
         ],
         where_str=(
 """hardware.ID IN
@@ -209,7 +209,8 @@ INNER JOIN memories ON memories.HARDWARE_ID = hardware.ID'''
      LEFT JOIN accountinfo ON accountinfo.HARDWARE_ID = hardware.ID
      GROUP BY accountinfo.TAG)
 AND (memories.TYPE <> 'FLASH' OR memories.TYPE IS NULL)
-AND (memories.CAPACITY <> 0 OR memories.CAPACITY IS NULL)"""
+AND ((memories.CAPACITY <> '0' AND memories.CAPACITY <> 'No')
+     OR memories.CAPACITY IS NULL)"""
         ),
         where_args=[],
         more_str='ORDER BY accountinfo.TAG, memories.NUMSLOTS',
@@ -467,8 +468,7 @@ AND networks.IPADDRESS <> ''"""
         ],
         value_cv=[
             ('networks.DESCRIPTION', 'string',),
-            ('INET_ATON(CONVERT(networks.IPADDRESS, UNSIGNED INTEGER))',
-             'ip',),
+            ('INET_ATON(networks.IPADDRESS)', 'ip',),
         ],
         where_str=(
 """hardware.ID IN
@@ -509,8 +509,7 @@ INNER JOIN networks ON networks.HARDWARE_ID = hardware.ID'''
             ('accountinfo.TAG', 'string',),
         ],
         value_cv=[
-            ('INET_ATON(CONVERT(networks.IPADDRESS, UNSIGNED INTEGER))',
-             'ip',),
+            ('INET_ATON(networks.IPADDRESS)', 'ip',),
         ],
         where_str=(
 """hardware.ID IN
