@@ -31,6 +31,7 @@ import logging
 import logging.handlers
 import copy
 import time
+import re
 
 
 #########
@@ -4611,7 +4612,7 @@ def get_drupal_field_defaults(db_obj, db_cur, entity_type, bundle):
                 check
 
     Dependencies:
-        modules: sys, nori
+        modules: sys, re, nori
 
     """
 
@@ -4639,9 +4640,15 @@ AND fc.deleted = 0
     if not ret[1]:
         return []
 
-    # wait until we see if there are any defaults to check for the
-    # module, so we don't have to emit warnings if there are no defaults
-    # anyway
+    # before we worry about the phpserialize module, make sure there are
+    # actually defaults
+    found_default = 0
+    for row in ret[1]:
+        if re.search('s:13:"default_value";(?!N;)', row[1]):
+            found_default = 1
+    if found_default == 0:
+        return []
+
     if 'phpserialize' not in sys.modules:
         nori.core.email_logger.error(
 '''Warning: there are defaults for Drupal fields under entity type
