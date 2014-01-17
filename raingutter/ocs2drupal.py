@@ -44,15 +44,20 @@ def single_direct_to_drupal(template, row):
     orig_num_keys = 1
     new_row = list(row[0:orig_num_keys])
     (
-        ocs_hardware_id, manufacturer, model_number, o_bversion, o_bdate,
+        ocs_hardware_id, o_smanufacturer, o_smodel, o_bversion, o_bdate,
         o_processort, o_processorn, ram, o_osname, o_osversion,
         o_oscomments, o_swap,
     ) = row[orig_num_keys:]
     os, os_version = os_strings(o_osname, o_osversion)
+    if o_smanufacturer == 'System manufacturer':
+        o_smanufacturer = None
+    if (o_smodel == 'System Product Name' or
+          o_smodel == 'amd64'):
+        o_smodel = None
     new_row += [
         ocs_hardware_id,
-        manufacturer,
-        model_number,
+        o_smanufacturer,
+        o_smodel,
         (o_bversion + (' (' + o_bdate + ')' if o_bdate else '')),
         ' x'.join([' '.join(str(o_processort).split()), str(o_processorn)]),
         ram,
@@ -176,15 +181,17 @@ def dimms_to_drupal(template, row):
     orig_num_keys = 1
     new_row = list(row[0:orig_num_keys])
     (
-        o_numslots, o_capacity, dimm_type, dimm_speed, serial_number,
+        o_numslots, o_capacity, dimm_type, dimm_speed, o_serialnumber,
     ) = row[orig_num_keys:]
+    if o_serialnumber.startswith('SerNum'):
+        o_serialnumber = None
     new_row += [
         (str(row[0]) + '-' + str(o_numslots)),  # key: label
         str(o_numslots),
         int(o_capacity) / 1024,
         dimm_type,
         dimm_speed,
-        serial_number,
+        o_serialnumber,
     ]
     for i, val in enumerate(new_row):
         if not val:
