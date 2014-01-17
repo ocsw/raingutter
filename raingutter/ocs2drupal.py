@@ -30,7 +30,13 @@ def os_strings(osname, osversion):
     if osname.startswith('FreeBSD '):
         return ('FreeBSD', osversion + ' ' + osname[8:])
     if osname == 'Microsoft Windows Server 2008 R2 Standard':
-        return ('Windows Server 2008 R2', osversion)
+        return ('Windows Server 2008 R2', ' '.join(['Standard', osversion]))
+    if osname == 'Microsoft Windows Web Server 2008 R2':
+        return ('Windows Server 2008 R2', ' '.join(['Web', osversion]))
+    if osname == 'Microsoft Windows 7 Professional':
+        return ('Windows 7', ' '.join(['Professional', osversion]))
+    if osname == 'Microsoft Windows XP Professional':
+        return ('Windows XP', ' '.join(['Professional', osversion]))
     return (osname, osversion)
 
 
