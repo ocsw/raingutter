@@ -82,7 +82,7 @@ LEFT JOIN memories ON memories.HARDWARE_ID = hardware.ID'''
             ('bios.BDATE', 'string',),
             ('hardware.PROCESSORT', 'string',),
             ('hardware.PROCESSORN', 'integer',),
-            ('SUM(memories.CAPACITY)/1024', 'decimal',),
+            ('SUM(CONVERT(memories.CAPACITY, DECIMAL))/1024', 'decimal',),
             ('hardware.OSNAME', 'string',),
             ('hardware.OSVERSION', 'string',),
             ('hardware.OSCOMMENTS', 'string',),  # kernel string
@@ -136,7 +136,8 @@ LEFT JOIN networks ON networks.HARDWARE_ID = hardware.ID'''
             ('accountinfo.TAG', 'string',),
         ],
         value_cv=[
-            ('INET_ATON(MIN(networks.IPGATEWAY))', 'ip',),
+            ('INET_ATON(MIN(CONVERT(networks.IPGATEWAY,
+                                    UNSIGNED INTEGER)))', 'ip',),
         ],
         where_str=(
 """hardware.ID IN
@@ -466,7 +467,8 @@ AND networks.IPADDRESS <> ''"""
         ],
         value_cv=[
             ('networks.DESCRIPTION', 'string',),
-            ('INET_ATON(networks.IPADDRESS)', 'ip',),
+            ('INET_ATON(CONVERT(networks.IPADDRESS, UNSIGNED INTEGER))',
+             'ip',),
         ],
         where_str=(
 """hardware.ID IN
@@ -507,7 +509,8 @@ INNER JOIN networks ON networks.HARDWARE_ID = hardware.ID'''
             ('accountinfo.TAG', 'string',),
         ],
         value_cv=[
-            ('INET_ATON(networks.IPADDRESS)', 'ip',),
+            ('INET_ATON(CONVERT(networks.IPADDRESS, UNSIGNED INTEGER))',
+             'ip',),
         ],
         where_str=(
 """hardware.ID IN
