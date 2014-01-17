@@ -3131,6 +3131,7 @@ Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, key_cv, value_cv]))
         field_name = field_ident[1]
 
         # handle value types
+        extra_set = ''
         if field_value_type.startswith('term: '):
             term_join = (
                 'LEFT JOIN taxonomy_term_data AS t\n'
@@ -3142,6 +3143,7 @@ Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, key_cv, value_cv]))
             term_join = ''
             value_column = 'f.field_{0}_start'.format(field_name)
             value_str = '%s'
+            extra_set = ', f.field_{0}_end = %s'.format(field_name)
         else:
             term_join = ''
             value_column = 'f.field_{0}_value'.format(field_name)
@@ -3155,13 +3157,13 @@ LEFT JOIN field_{0}_field_{1} AS f
 ON f.entity_id = node.nid
 AND f.revision_id = node.vid
 {2}
-SET {3} = {4}
+SET {3} = {4}{5}
 WHERE node.vid IN
       (SELECT MAX(vid)
        FROM node_revision
        GROUP BY nid)
 AND node.type = %s
-AND {5} = %s
+AND {6} = %s
 AND f.deleted = 0
 '''
         )
@@ -3174,9 +3176,13 @@ AND f.deleted = 0
                 term_join,
                 value_column,
                 value_str,
+                extra_set,
                 key_column
             )
-            query_args[dr_str] = [field_value, node_type, node_value]
+            query_args[dr_str] = [field_value]
+            if field_value_type == 'ip':
+                query_args[dr_str].append(field_value)
+            query_args[dr_str] += [node_type, node_value]
 
     #
     # node -> relation -> node
@@ -3393,6 +3399,7 @@ AND {4} = %s
         field_name = field_ident[1]
 
         # handle value types
+        extra_set = ''
         if field_value_type.startswith('term: '):
             term_join = (
                 'LEFT JOIN taxonomy_term_data AS t\n'
@@ -3404,6 +3411,7 @@ AND {4} = %s
             term_join = ''
             value_column = 'f.field_{0}_start'.format(field_name)
             value_str = '%s'
+            extra_set = ', f.field_{0}_end = %s'.format(field_name)
         else:
             term_join = ''
             value_column = 'f.field_{0}_value'.format(field_name)
@@ -3426,13 +3434,13 @@ LEFT JOIN field_{1}_field_{2} AS f
 ON f.entity_id = e2.entity_id
 AND f.revision_id = e2.revision_id
 {3}
-SET {4} = {5}
+SET {4} = {5}{6}
 WHERE node1.vid IN
       (SELECT MAX(vid)
        FROM node_revision
        GROUP BY nid)
 AND node1.type = %s
-AND {6} = %s
+AND {7} = %s
 AND e1.revision_id IN
     (SELECT MAX(vid)
      FROM relation_revision
@@ -3443,13 +3451,13 @@ AND e1.endpoints_entity_type = 'node'
 AND e1.deleted = 0
 AND e2.endpoints_entity_type = 'node'
 AND e2.deleted = 0
-{7}
+{8}
 AND node2.vid IN
     (SELECT MAX(vid)
      FROM node_revision
      GROUP BY nid)
 AND node2.type = %s
-AND {8} = %s
+AND {9} = %s
 AND f.entity_type = 'relation'
 AND f.deleted = 0
 '''
@@ -3464,12 +3472,15 @@ AND f.deleted = 0
                 term_join,
                 value_column,
                 value_str,
+                extra_set,
                 node1_key_column,
                 relation_field_cond,
                 node2_key_column
             )
-            query_args[dr_str] = [field_value, node1_type, node1_value,
-                                  relation_type]
+            query_args[dr_str] = [field_value]
+            if field_value_type == 'ip':
+                query_args[dr_str].append(field_value)
+            query_args[dr_str] += [node1_type, node1_value, relation_type]
             if len(relation_ident) > 2:
                 query_args[dr_str].append(relation_value)
             query_args[dr_str] += [node2_type, node2_value]
@@ -3514,6 +3525,7 @@ AND f.deleted = 0
         field_name = field_ident[1]
 
         # handle value types
+        extra_set = ''
         if field_value_type.startswith('term: '):
             term_join = (
                 'LEFT JOIN taxonomy_term_data AS t\n'
@@ -3525,6 +3537,7 @@ AND f.deleted = 0
             term_join = ''
             value_column = 'f.field_{0}_start'.format(field_name)
             value_str = '%s'
+            extra_set = ', f.field_{0}_end = %s'.format(field_name)
         else:
             term_join = ''
             value_column = 'f.field_{0}_value'.format(field_name)
@@ -3544,13 +3557,13 @@ LEFT JOIN field_{1}_field_{2} AS f
 ON f.entity_id = fci.item_id
 AND f.revision_id = fci.revision_id
 {3}
-SET {4} = {5}
+SET {4} = {5}{6}
 WHERE node.vid IN
       (SELECT MAX(vid)
        FROM node_revision
        GROUP BY nid)
 AND node.type = %s
-AND {6} = %s
+AND {7} = %s
 AND fcf.entity_type = 'node'
 AND fcf.deleted = 0
 AND fci.revision_id IN
@@ -3558,7 +3571,7 @@ AND fci.revision_id IN
      FROM field_collection_item_revision
      GROUP BY item_id)
 AND fci.archived = 0
-AND {7} = %s
+AND {8} = %s
 AND f.entity_type = 'field_collection_item'
 AND f.deleted = 0
 '''
@@ -3573,11 +3586,14 @@ AND f.deleted = 0
                 term_join,
                 value_column,
                 value_str,
+                extra_set,
                 key_column_1,
                 key_column_2
             )
-            query_args[dr_str] = [field_value, node_type, node_value,
-                                  fc_value]
+            query_args[dr_str] = [field_value]
+            if field_value_type == 'ip':
+                query_args[dr_str].append(field_value)
+            query_args[dr_str] += [node_type, node_value, fc_value]
 
     ####################### execute the queries #######################
 
