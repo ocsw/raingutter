@@ -4037,7 +4037,7 @@ Skipping insert.''' .
 
         # insert the field entry
         ret = insert_drupal_field(db_obj, db_cur, 'field_collection_item',
-                                  ('field_' + fc_type), fc_id, fc_vid,
+                                  'field_' + fc_type, fc_id, fc_vid,
                                   field_cv)
         if ret is None:
             return None
@@ -5100,7 +5100,7 @@ VALUES
 (%s, 0, %s, 0, '')
 '''
         )
-        query_args = [fc_value, fc_type]
+        query_args = [fc_value, 'field_' + fc_type]
     elif fc_id_type == 'label':
         query_str = (
 '''
@@ -5110,7 +5110,7 @@ VALUES
 (0, %s, 0, %s)
 '''
         )
-        query_args = [('field_' + fc_type), fc_value]
+        query_args = ['field_' + fc_type, fc_value]
     if not db_obj.execute(db_cur, query_str.strip(), query_args,
                           has_results=False):
         # won't be reached currently; script will exit on errors
@@ -5188,8 +5188,9 @@ WHERE item_id = %s
         return (None, None, None)
 
     # default field values
-    f_defs = get_drupal_field_defaults(db_obj, db_cur,
-                                       'field_collection_item', fc_type)
+    f_defs = get_drupal_field_defaults(
+        db_obj, db_cur, 'field_collection_item', 'field_' + fc_type
+    )
     if f_defs is None:
         return (False, fcid, vid)
     for f_def in f_defs:
