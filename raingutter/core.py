@@ -5072,6 +5072,8 @@ def insert_drupal_fc(db_obj, db_cur, entity_type, bundle, entity_id,
                or value_cv sequence
 
     Dependencies:
+        functions: drupal_field_ok_to_insert(), insert_drupal_field(),
+                   get_drupal_field_defaults()
         modules: nori
 
     """
@@ -5082,6 +5084,13 @@ def insert_drupal_fc(db_obj, db_cur, entity_type, bundle, entity_id,
     fc_value = fc_cv[2]
     fc_type = fc_ident[1]
     fc_id_type = fc_ident[2]
+
+    # room to insert another FC entry?
+    # (drupal_insert_field() will check again later; in either case it's
+    # technically a race condition, but the readonly functions help)
+    if not drupal_field_ok_to_insert(db_obj, db_cur, entity_type, bundle,
+                                     entity_id, revision_id, fc_type)[0]:
+        return (None, None, None)
 
     # prepare for a transaction
     db_ac = db_obj.autocommit(None)
@@ -5201,6 +5210,71 @@ WHERE item_id = %s
     return (True, fcid, vid)
 
 
+def drupal_field_ok_to_insert(db_obj, db_cur, entity_type, bundle,
+                              entity_id, revision_id, field_name):
+
+    """
+    Check if there is room to insert a Drupal field entry.
+
+    Returns a tuple of (answer, next_insert_delta), where answer is True
+    (yes), False (no), or None (failure).
+
+    Parameters:
+        field_cv: the name of the field
+        see insert_drupal_field() for the rest
+
+    Dependencies:
+        fucntions: get_drupal_field_cardinality(), get_drupal_max_delta()
+        modules: nori
+
+    """
+
+    # check cardinality
+    f_card = get_drupal_field_cardinality(db_obj, db_cur, field_name)
+    if not f_card:
+        nori.core.email_logger.error(
+            'Warning: could not get the cardinality of Drupal field {0};\n'
+            'skipping insert.'.format(nori.pps(field_name))
+        )
+        return (None, None)
+
+    # check current count
+    f_cur_delta = get_drupal_max_delta(db_obj, db_cur, entity_type, bundle,
+                                       entity_id, revision_id, field_name)
+    if f_cur_delta is None:
+        nori.core.email_logger.error(
+'''Warning: could not get the maximum delta of Drupal field {0}
+under the following parent entity:
+    entity_type: {1}
+    bundle: {2}
+    entity_id: {3}
+    revision_id: {4}
+Skipping insert.''' .
+            format(*map(nori.pps, [field_name, entity_type, bundle,
+                                   entity_id, revision_id]))
+        )
+        return (None, None)
+    if not f_cur_delta:
+        f_cur_delta = (-1, )
+
+    # no more room?
+    if f_card[0] != -1 and f_cur_delta[0] >= (f_card[0] - 1):
+        nori.core.email_logger.error(
+'''There are already the maximum number of entries {0} for Drupal field
+{1} under the following parent entity:
+    entity_type: {2}
+    bundle: {3}
+    entity_id: {4}
+    revision_id: {5}
+Skipping insert; manual intervention required.''' .
+            format(*map(nori.pps, [f_card, field_name, entity_type, bundle,
+                                   entity_id, revision_id]))
+        )
+        return (False, None)
+
+    return (True, f_cur_delta[0] + 1)
+
+
 def insert_drupal_field(db_obj, db_cur, entity_type, bundle, entity_id,
                         revision_id, field_cv, extra_data=None,
                         no_trans=False):
@@ -5228,6 +5302,7 @@ def insert_drupal_field(db_obj, db_cur, entity_type, bundle, entity_id,
                   transaction management
 
     Dependencies:
+        functions: drupal_field_ok_to_insert(), get_drupal_term_id()
         modules: operator, nori
 
     """
@@ -5243,45 +5318,13 @@ def insert_drupal_field(db_obj, db_cur, entity_type, bundle, entity_id,
     field_value = field_cv[2]
     field_name = field_ident[1]
 
-    # check cardinality
-    f_card = get_drupal_field_cardinality(db_obj, db_cur, field_name)
-    if not f_card:
-        nori.core.email_logger.error(
-            'Warning: could not get the cardinality of Drupal field {0};\n'
-            'skipping insert.'.format(nori.pps(field_name))
-        )
-        return None
-    f_cur_delta = get_drupal_max_delta(db_obj, db_cur, entity_type, bundle,
+    # room to insert another entry?
+    ins_ok = drupal_field_ok_to_insert(db_obj, db_cur, entity_type, bundle,
                                        entity_id, revision_id, field_name)
-    if f_cur_delta is None:
-        nori.core.email_logger.error(
-'''Warning: could not get the maximum delta of Drupal field {0}
-under the following parent entity:
-    entity_type: {1}
-    bundle: {2}
-    entity_id: {3}
-    revision_id: {4}
-Skipping insert.''' .
-            format(*map(nori.pps, [field_name, entity_type, bundle,
-                                   entity_id, revision_id]))
-        )
+    if not ins_ok[0]:
         return None
-    if not f_cur_delta:
-        f_cur_delta = (-1, )
-    if f_card[0] != -1 and f_cur_delta[0] >= (f_card[0] - 1):
-        # no more room
-        nori.core.email_logger.error(
-'''There are already the maximum number of entries {0} for Drupal field
-{1} under the following parent entity:
-    entity_type: {2}
-    bundle: {3}
-    entity_id: {4}
-    revision_id: {5}
-Skipping insert; manual intervention required.''' .
-            format(*map(nori.pps, [f_card, field_name, entity_type, bundle,
-                                   entity_id, revision_id]))
-        )
-        return None
+    else:
+        insert_delta = ins_ok[1]
 
     # handle value types
     if field_value_type.startswith('term: '):
@@ -5333,7 +5376,7 @@ VALUES
                    extra_placeholders)
         )
         query_args = [entity_type, bundle, entity_id, revision_id,
-                      (f_cur_delta[0] + 1), field_value]
+                      insert_delta, field_value]
         if extra_values:
             query_args += extra_values
 
