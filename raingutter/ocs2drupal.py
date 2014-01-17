@@ -151,7 +151,9 @@ LEFT JOIN networks ON networks.HARDWARE_ID = hardware.ID'''
      FROM hardware
      LEFT JOIN accountinfo ON accountinfo.HARDWARE_ID = hardware.ID
      GROUP BY accountinfo.TAG)
-AND networks.IPGATEWAY <> ''"""
+AND networks.IPGATEWAY IS NOT NULL
+AND networks.IPGATEWAY <> ''
+AND networks.IPGATEWAY <> '0.0.0.0'"""
         ),
         where_args=[],
         more_str='GROUP BY hardware.ID ORDER BY accountinfo.TAG',
@@ -466,7 +468,8 @@ templates.append(dict(
 INNER JOIN accountinfo ON accountinfo.HARDWARE_ID = hardware.ID
 INNER JOIN networks ON networks.HARDWARE_ID = hardware.ID
 AND networks.IPADDRESS IS NOT NULL
-AND networks.IPADDRESS <> ''"""
+AND networks.IPADDRESS <> ''
+AND networks.IPADDRESS <> '0.0.0.0'"""
 
         ),
         key_cv=[
@@ -524,7 +527,8 @@ INNER JOIN networks ON networks.HARDWARE_ID = hardware.ID'''
      LEFT JOIN accountinfo ON accountinfo.HARDWARE_ID = hardware.ID
      GROUP BY accountinfo.TAG)
 AND networks.IPADDRESS IS NOT NULL
-AND networks.IPADDRESS <> ''"""
+AND networks.IPADDRESS <> ''
+AND networks.IPADDRESS <> '0.0.0.0'"""
         ),
         where_args=[],
         more_str='ORDER BY accountinfo.TAG, networks.DESCRIPTION',
