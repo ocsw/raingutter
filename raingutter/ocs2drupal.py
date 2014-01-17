@@ -54,7 +54,7 @@ def single_direct_to_drupal(template, row):
         manufacturer,
         model_number,
         (o_bversion + (' (' + o_bdate + ')' if o_bdate else '')),
-        ' x'.join([str(o_processort), str(o_processorn)]),
+        ' x'.join([' '.join(str(o_processort).split()), str(o_processorn)]),
         ram,
         os,
         os_version,
