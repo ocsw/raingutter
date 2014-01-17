@@ -5194,7 +5194,7 @@ WHERE item_id = %s
         return (False, fcid, vid)
     for f_def in f_defs:
         if not insert_drupal_field(db_obj, db_cur, 'field_collection_item',
-                                   fc_type, fcid, vid, f_def):
+                                   'field_' + fc_type, fcid, vid, f_def):
             return (False, fcid, vid)
 
     return (True, fcid, vid)
