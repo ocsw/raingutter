@@ -5973,8 +5973,9 @@ def do_sync(t_index, s_row, d_row, d_db, d_cur, diff_k, diff_i):
     )
     if (dest_type == 'drupal') and (None in [x[2] for x in new_value_cv]):
         nori.core.status_logger.info(
-"""The source data includes NULLs, but Drupal databases can't contain NULLs;
-skipping this {0}.""".format(mode)
+"""The source data includes NULLs, but Drupal databases can't contain NULLs.
+In reality, those fields should be deleted, but that isn't implemented yet.
+Skipping this {0}.""".format(mode)
         )
         return False
 
