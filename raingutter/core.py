@@ -5967,17 +5967,27 @@ def do_sync(t_index, s_row, d_row, d_db, d_cur, diff_k, diff_i):
         db_change_cb = nori.core.cfg['source_template_change_callbacks']
     mode = 'insert' if t_multiple else 'update'
 
-    # get the new cv sequences
+    # get the new cv sequences and deal with NULLs
     new_key_cv, new_value_cv = key_value_copy(
         s_row[1], d_row[1], dest_kwargs['key_cv'], dest_kwargs['value_cv']
     )
-    if (dest_type == 'drupal') and (None in [x[2] for x in new_value_cv]):
-        nori.core.status_logger.info(
+    if dest_type == 'drupal':
+        if d_row[1]:
+            # there was a matching row
+            if None in [x[2] for x in new_value_cv]:
+                nori.core.status_logger.info(
 """The source data includes NULLs, but Drupal databases can't contain NULLs.
 In reality, those fields should be deleted, but that isn't implemented yet.
 Skipping this {0}.""".format(mode)
-        )
-        return False
+                )
+                return False
+        else:
+            # there was no matching row, so just don't insert the NULLs
+            clean_new_value_cv = []
+            for i, cv in enumerate(new_value_cv):
+                if cv[2] is not None:
+                    clean_new_value_cv.append(cv)
+            new_value_cv = clean_new_value_cv
 
     # turn off replication?
     if dest_no_repl:
