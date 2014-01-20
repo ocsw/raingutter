@@ -52,7 +52,7 @@ def single_direct_to_drupal(template, row):
     (
         ocs_hardware_id, o_smanufacturer, o_smodel, o_bversion, o_bdate,
         o_processort, o_processorn, ram, o_osname, o_osversion,
-        o_oscomments, o_swap,
+        o_oscomments, swap,
     ) = row[orig_num_keys:]
     os, os_version = os_strings(o_osname, o_osversion)
     if o_smanufacturer == 'System manufacturer':
@@ -71,7 +71,7 @@ def single_direct_to_drupal(template, row):
         os_version,
         # kernel string
         o_oscomments.replace('\n', ' ') if o_oscomments else None,
-        (o_swap / 1024),
+        swap,
     ]
     for i, val in enumerate(new_row):
         if not val:
@@ -99,11 +99,17 @@ LEFT JOIN memories ON memories.HARDWARE_ID = hardware.ID'''
             ('bios.BDATE', 'string',),
             ('hardware.PROCESSORT', 'string',),
             ('hardware.PROCESSORN', 'integer',),
-            ('SUM(CONVERT(memories.CAPACITY, DECIMAL)) / 1024', 'decimal',),
+            (
+'''FLOOR((IF(SUM(CONVERT(memories.CAPACITY, DECIMAL)) <> 0,
+             SUM(CONVERT(memories.CAPACITY, DECIMAL)),
+             hardware.MEMORY) / 1024) * 100) / 100''',
+             'decimal',  # CAPACITY starts as string, MEMORY as integer
+            ),
             ('hardware.OSNAME', 'string',),
             ('hardware.OSVERSION', 'string',),
             ('hardware.OSCOMMENTS', 'string',),  # kernel string
-            ('hardware.SWAP', 'integer',),
+            # starts as integer
+            ('FLOOR((hardware.SWAP / 1024) * 1000) / 1000', 'decimal',),
         ],
         where_str=(
 """hardware.ID IN
@@ -154,6 +160,7 @@ LEFT JOIN networks ON networks.HARDWARE_ID = hardware.ID'''
             ('accountinfo.TAG', 'string',),
         ],
         value_cv=[
+            # starts as string
             ('MIN(INET_ATON(networks.IPGATEWAY))', 'ip',),
         ],
         where_str=(
@@ -187,14 +194,14 @@ def dimms_to_drupal(template, row):
     orig_num_keys = 1
     new_row = list(row[0:orig_num_keys])
     (
-        o_numslots, o_capacity, dimm_type, dimm_speed, o_serialnumber,
+        o_numslots, capacity, dimm_type, dimm_speed, o_serialnumber,
     ) = row[orig_num_keys:]
     if o_serialnumber.startswith('SerNum'):
         o_serialnumber = None
     new_row += [
         (str(row[0]) + '-' + str(o_numslots)),  # key: label
         str(o_numslots),
-        int(o_capacity) / 1024,
+        capacity,
         dimm_type,
         dimm_speed,
         o_serialnumber,
@@ -218,7 +225,11 @@ INNER JOIN memories ON memories.HARDWARE_ID = hardware.ID'''
         ],
         value_cv=[
             ('memories.NUMSLOTS', 'string',),
-            ('memories.CAPACITY', 'string',),
+            # starts as string
+            (
+'''FLOOR((CONVERT(memories.CAPACITY, DECIMAL) / 1024) * 100) / 100''',
+             'decimal',
+            ),
             ('memories.TYPE', 'string',),
             ('memories.SPEED', 'string',),
             ('memories.SERIALNUMBER', 'string',),
@@ -260,14 +271,14 @@ def volumes_to_drupal(template, row):
     orig_num_keys = 1
     new_row = list(row[0:orig_num_keys])
     (
-        o_letter, o_type, device_name, filesystem, o_total,
+        o_letter, o_type, device_name, filesystem, size,
     ) = row[orig_num_keys:]
     new_row += [
         (str(row[0]) + '-' + str(o_letter if o_letter else o_type)),
         (o_letter if o_letter else o_type),
         device_name,
         filesystem,
-        math.floor(o_total / 1024) if o_total else None,
+        size,
     ]
     for i, val in enumerate(new_row):
         if not val:
@@ -291,7 +302,7 @@ INNER JOIN drives ON drives.HARDWARE_ID = hardware.ID'''
             ('drives.TYPE', 'string',),
             ('drives.VOLUMN', 'string',),
             ('drives.FILESYSTEM', 'string',),
-            ('drives.TOTAL', 'integer',),
+            ('FLOOR(drives.TOTAL / 1024)', 'integer',),
         ],
         where_str=(
 """hardware.ID IN
@@ -479,17 +490,14 @@ templates.append(dict(
         tables=(
 """hardware
 INNER JOIN accountinfo ON accountinfo.HARDWARE_ID = hardware.ID
-INNER JOIN networks ON networks.HARDWARE_ID = hardware.ID
-AND networks.IPADDRESS IS NOT NULL
-AND networks.IPADDRESS <> ''
-AND networks.IPADDRESS <> '0.0.0.0'"""
-
+INNER JOIN networks ON networks.HARDWARE_ID = hardware.ID"""
         ),
         key_cv=[
             ('accountinfo.TAG', 'string',),
         ],
         value_cv=[
             ('networks.DESCRIPTION', 'string',),
+            # starts as string
             ('INET_ATON(networks.IPADDRESS)', 'ip',),
         ],
         where_str=(
@@ -497,7 +505,10 @@ AND networks.IPADDRESS <> '0.0.0.0'"""
     (SELECT max(hardware.ID)
      FROM hardware
      LEFT JOIN accountinfo ON accountinfo.HARDWARE_ID = hardware.ID
-     GROUP BY accountinfo.TAG)"""
+     GROUP BY accountinfo.TAG)
+AND networks.IPADDRESS IS NOT NULL
+AND networks.IPADDRESS <> ''
+AND networks.IPADDRESS <> '0.0.0.0'"""
         ),
         where_args=[],
         more_str='ORDER BY accountinfo.TAG, networks.DESCRIPTION',
@@ -531,7 +542,8 @@ INNER JOIN networks ON networks.HARDWARE_ID = hardware.ID'''
             ('accountinfo.TAG', 'string',),
         ],
         value_cv=[
-            ('INET_ATON(networks.IPADDRESS)', 'ip',),
+            # starts as string
+            ('INET_ATON(networks.IPADDRESS)', 'integer',),
         ],
         where_str=(
 """hardware.ID IN
