@@ -6078,14 +6078,14 @@ def do_diff_sync(t_index, s_rows, d_rows, d_db, d_cur):
 
     # diff/sync and check for missing rows in the destination DB
     global_callbacks_needed = False
+    if nori.core.cfg['bidir']:
+        d_found = []
     for s_row in s_rows:
         s_found = False
         s_num_keys = s_row[0]
         s_data = s_row[1]
         s_keys = s_data[0:s_num_keys]
         s_vals = s_data[s_num_keys:]
-        if nori.core.cfg['bidir']:
-            d_found = []
         for di, d_row in enumerate(d_rows):
             d_num_keys = d_row[0]
             d_data = d_row[1]
