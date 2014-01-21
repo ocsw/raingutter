@@ -338,7 +338,7 @@ AND drives.FILESYSTEM <> 'SMB'"""
 ############################## NFS mounts ##############################
 
 def nfs_to_drupal(template, row):
-    orig_num_keys = 2
+    orig_num_keys = 1
     new_row = list(row[0:orig_num_keys])
     (
         o_letter, o_type, o_volumn,
@@ -348,14 +348,14 @@ def nfs_to_drupal(template, row):
     source_host, source_path = (o_volumn.split(':', 1) if o_volumn
                                                        else (None, None))
     new_row += [
-        source_host,
         source_path,
+        source_host,
         (o_letter if o_letter else o_type),
     ]
     for i, val in enumerate(new_row):
         if not val:
             new_row[i] = None
-    return ((orig_num_keys + 1), tuple(new_row))
+    return ((orig_num_keys + 2), tuple(new_row))
 
 
 templates.append(dict(
@@ -368,7 +368,6 @@ INNER JOIN drives ON drives.HARDWARE_ID = hardware.ID'''
         ),
         key_cv=[
             ('accountinfo.TAG', 'string',),
-            ('drives.ID', 'integer',),
         ],
         value_cv=[
             ('drives.LETTER', 'string',),
@@ -391,11 +390,10 @@ AND (drives.FILESYSTEM = 'nfs' OR drives.FILESYSTEM = 'NFS')"""
     dest_query_args=([], dict(
         key_cv=[
             (('node', 'server', 'title'), 'string',),
-            (('relation', 'nfs_mounts', 'ocs_drive_id'), 'integer',),
+            (('relation', 'nfs_mounts', 'source_path'), 'string',),
             (('node', 'server', 'title'), 'string',),
         ],
         value_cv=[
-            (('field', 'source_path'), 'string',),
             (('field', 'destination_path'), 'string',),
         ],
     )),
