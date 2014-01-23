@@ -6225,6 +6225,10 @@ def run_mode_hook():
             'Callback complete.' if ret else 'Callback failed.'
         )
 
+    # log that we're starting the loop;
+    # especially important in case the loop produces no output
+    nori.core.status_logger.info('Starting template loop.')
+
     # template loop
     global_callbacks_needed = False
     for t_index, template in enumerate(nori.core.cfg['templates']):
@@ -6362,6 +6366,10 @@ def run_mode_hook():
         #
         # end of template loop
         #
+
+    # log that we've finished the loop;
+    # especially important in case the loop produces no output
+    nori.core.status_logger.info('Template loop complete.')
 
     # global change callbacks
     if global_callbacks_needed:
