@@ -2215,7 +2215,7 @@ def drupal_db_query(db_obj, db_cur, mode, key_cv, value_cv):
     Dependencies:
         functions: drupal_db_read(), drupal_db_update(),
                    drupal_db_insert()
-        modules: sys, itertools, nori
+        modules: sys, collections, itertools, nori
 
     """
 
@@ -2281,7 +2281,7 @@ Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, mode, key_cv,
         #     results[(K1c, K2c)][2] = [V2d]
         # and so on.
         #
-        results = {}
+        results = collections.OrderedDict()
         for i, cv in enumerate(value_cv):
             ret = drupal_db_read(db_obj, db_cur, key_cv, [cv])
             if ret is None:
@@ -6180,7 +6180,7 @@ def run_mode_hook():
         functions: dispatch_post_action_callbacks(), key_filter(),
                    log_diff(), do_diff_report(), do_diff_sync(),
                    (functions in templates), (callback functions)
-        modules: atexit, nori
+        modules: atexit, collections, nori
 
     """
 
@@ -6324,14 +6324,14 @@ def run_mode_hook():
                 global_callbacks_needed = True
         else:
             # group by keys
-            s_row_groups = {}
+            s_row_groups = collections.OrderedDict()
             for s_row in s_rows:
                 s_num_keys = s_row[0]
                 s_data = s_row[1]
                 if s_data[0:s_num_keys] not in s_row_groups:
                     s_row_groups[s_data[0:s_num_keys]] = []
                 s_row_groups[s_data[0:s_num_keys]].append(s_row)
-            d_row_groups = {}
+            d_row_groups = collections.OrderedDict()
             for d_row in d_rows:
                 d_num_keys = d_row[0]
                 d_data = d_row[1]
