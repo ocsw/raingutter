@@ -5450,6 +5450,16 @@ WHERE name='site_readonly'
 '''
         )
         query_args = ['i:1;' if what else 'i:0;']
+        if not db_obj.execute(db_cur, query_str.strip(), query_args,
+                              has_results=False):
+            return False;
+
+        query_str = (
+'''
+DELETE FROM cache_bootstrap WHERE cid='variables'
+'''
+        )
+        query_args = []
         return db_obj.execute(db_cur, query_str.strip(), query_args,
                               has_results=False)
 
