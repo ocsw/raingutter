@@ -138,7 +138,6 @@ post_action_callbacks = []
 s_drupal_readonly = None
 d_drupal_readonly = None
 
-#
 # This ordered dict contains the database diffs.  The format is one of:
 #     * rendered database 'key' strings ->
 #       lists of tuples in the format (template_index, exists_in_source,
