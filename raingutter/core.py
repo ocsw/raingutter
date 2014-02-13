@@ -222,6 +222,22 @@ Can be True or False.
     cl_coercer=nori.str_to_bool,
 )
 
+nori.core.config_settings['delayed_drupal_deletes'] = dict(
+    descr=(
+'''
+When deleting fields from Drupal databases, just mark them as deleted
+(True), or actually delete them (False)?
+
+If this setting is True, the entries will actually be fully deleted when
+Drupal's cron job runs.  Either way, certain database entries will be
+deleted when the script runs, but this setting provides a window of time
+in which some of the data can theoretically be recovered.
+'''
+    ),
+    default=True,
+    cl_coercer=nori.str_to_bool,
+)
+
 nori.core.config_settings['pre_action_callbacks'] = dict(
     descr=(
 '''
@@ -314,7 +330,9 @@ Database query functions must take these keyword arguments in addition to
 any other *args and **kwargs:
     db_obj: the database connection object to use
     db_cur: the database cursor object to use
-    mode: 'read', 'update', or 'insert'
+    mode: 'read', 'update', 'insert', or 'delete'
+    scope: for the 'update', 'insert', and 'delete' modes, whether the diff
+           being synced is at the value ('v') level or the key ('k') level
     key_cv: a sequence of 2- or 3-tuples indicating the names of the
             'key' columns, the data types of the columns, and the values
             to require for the columns (the data types are passed to the
@@ -372,11 +390,11 @@ If the multi-row boolean is true, rows for the same keys must be retrieved
 in sequence (i.e., two rows for the same keys may not be separated by a row
 for different keys; this typically requires an ORDER BY clause in SQL).
 
-In 'update' and 'insert' modes, query functions must accept value_cv
-sequences with exactly one tuple, and must return True to indicate full
-success, False to indicate partial success, or None to indicate failure.
-(Programming note: the update_insert_dispatcher() function will take care of
-looping over the value_cv columns.)
+In the 'update', 'insert', and 'delete' modes, query functions must accept
+value_cv sequences with exactly one tuple, and must return True to indicate
+full success, False to indicate partial success, or None to indicate
+failure.  (Programming note: the query_dispatcher() function will take care
+of looping over the value_cv columns.)
 '''
     ),
     # see apply_config_defaults() for default
@@ -763,11 +781,14 @@ diff or sync.
     The callback functions must take these keyword arguments in addition to
     any other *args and **kwargs:
         t_index: the index of the relevant template in the templates
-                setting
+                 setting
+        mode: 'update', 'insert', or 'delete'
+        scope: whether the diff that was synced was at the value ('v') level
+               or the key ('k') level
         s_row: a tuple of (number of keys, transformed source data
-            tuple)
+               tuple)
         d_row: a tuple of (number of keys, transformed destination data
-            tuple)
+               tuple)
         new_key_cv: a copy of the key_cv element of the destination
                     arguments in the relevant template, with the new values
                     inserted into the tuples
@@ -1708,11 +1729,13 @@ def init_reporting():
 # higher-level functions explain what's going on)
 #
 
-def update_insert_dispatcher(mode, db_obj, db_cur, dest_func, dest_args,
-                             dest_kwargs, new_key_cv, new_value_cv):
+def query_dispatcher(mode, scope, db_obj, db_cur, dest_func, dest_args,
+                     dest_kwargs, new_key_cv, new_value_cv):
 
     """
     Call database query functions separately for each value_cv tuple.
+
+    Not used for reads, only updates / inserts / deletes.
 
     The source_data tuple, dest_data tuple, and (dest_key_cv +
     dest_value_cv) must all be the same length, and the number of keys
@@ -1720,7 +1743,9 @@ def update_insert_dispatcher(mode, db_obj, db_cur, dest_func, dest_args,
     dest_key_cv.
 
     Parameters:
-        mode: 'read', 'update', or 'insert'
+        mode: 'update', 'insert', or 'delete'
+        scope: whether the diff being synced is at the value ('v') level
+               or the key ('k') level
         db_obj: the database connection object to use
         db_cur: the database cursor object to use
         dest_func: the query function to use
@@ -1750,6 +1775,10 @@ def update_insert_dispatcher(mode, db_obj, db_cur, dest_func, dest_args,
         nori.core.status_logger.info(
             'Inserting into destination database...'
         )
+    elif mode == 'delete':
+        nori.core.status_logger.info(
+            'Deleting from destination database...'
+        )
 
     # call query function once for each column
     fulls = 0
@@ -1757,11 +1786,10 @@ def update_insert_dispatcher(mode, db_obj, db_cur, dest_func, dest_args,
     failures = 0
     new_dest_kwargs = copy.copy(dest_kwargs)
     new_dest_kwargs['key_cv'] = new_key_cv
-    redo_value_cv = []
     for cv in new_value_cv:
         new_dest_kwargs['value_cv'] = [cv]
         ret = dest_func(*dest_args, db_obj=db_obj, db_cur=db_cur,
-                        mode=mode, **new_dest_kwargs)
+                        mode=mode, scope=scope, **new_dest_kwargs)
         if ret is None:
             # eventually, there should be an option for this case:
             # exit or continue? (currently, won't be reached)
@@ -1777,10 +1805,6 @@ probably required.
                 format(mode, *map(nori.pps, [new_key_cv, new_value_cv]))
             )
             partials += 1
-        elif mode == 'update' and db_cur.rowcount == 0:
-            # there was no row there to update, have to insert it
-            redo_value_cv.append(cv)
-            failures += 1
         else:
             fulls += 1
 
@@ -1796,37 +1820,10 @@ probably required.
         nori.core.status_logger.info(mode.capitalize() +
                                      ' partially succeeded.')
 
-    # handle missing rows
-    if not redo_value_cv:
-        return status
-    else:
-        if status is not None:
-            msg_start = 'However, s'
-        else:
-            msg_start = 'S'
-        nori.core.status_logger.info(
-            '{0}ome rows were missing and could not be updated;\n'
-            'inserting them now.'.format(msg_start)
-        )
-        redo_status = update_insert_dispatcher(
-            'insert', db_obj, db_cur, dest_func, dest_args, dest_kwargs,
-            new_key_cv, redo_value_cv
-        )
-        if redo_status is None:
-            if status is None:
-                return None
-            else:
-                return False
-        elif not redo_status:
-            return False
-        else:
-            if status or (len(redo_value_cv) == failures):
-                return True
-            else:
-                return False
+    return status
 
 
-def generic_db_query(db_obj, db_cur, mode, tables, key_cv, value_cv,
+def generic_db_query(db_obj, db_cur, mode, scope, tables, key_cv, value_cv,
                      where_str=None, where_args=[], more_str=None,
                      more_args=[]):
 
@@ -1838,7 +1835,11 @@ def generic_db_query(db_obj, db_cur, mode, tables, key_cv, value_cv,
     Parameters:
         db_obj: the database connection object to use
         db_cur: the database cursor object to use
-        mode: 'read', 'update', or 'insert'
+        mode: 'read', 'update', 'insert', or 'delete'
+        scope: for the 'update', 'insert', and 'delete' modes, whether
+               the diff being synced is at the value ('v') level or the
+               key ('k') level
+               [ignored]
         tables: either a sequence of table names, which will be joined
                 with commas (INNER JOIN), or a string which will be used
                 as the FROM clause of the query (don't include the FROM
@@ -1867,12 +1868,12 @@ def generic_db_query(db_obj, db_cur, mode, tables, key_cv, value_cv,
 
     Dependencies:
         functions: generic_db_read(), generic_db_update(),
-                   generic_db_insert()
+                   generic_db_insert(), generic_db_delete()
         modules: sys, nori
 
     """
 
-    if mode != 'read' and mode != 'update' and mode != 'insert':
+    if mode not in ['read', 'update', 'insert', 'delete']:
         nori.core.email_logger.error(
 '''Internal Error: invalid mode supplied in call to generic_db_query();
 call was (in expanded notation):
@@ -1881,17 +1882,18 @@ generic_db_query(
     db_obj={0},
     db_cur={1},
     mode={2},
-    tables={3},
-    key_cv={4},
-    value_cv={5},
-    where_str={6},
-    where_args={7},
-    more_str={8},
-    more_args={9}
+    scope={3},
+    tables={4},
+    key_cv={5},
+    value_cv={6},
+    where_str={7},
+    where_args={8},
+    more_str={9},
+    more_args={10}
 )
 
-Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, mode, tables, key_cv,
-                                   value_cv, where_str, where_args,
+Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, mode, scope, tables,
+                                   key_cv, value_cv, where_str, where_args,
                                    more_str, more_args]))
         )
         sys.exit(nori.core.exitvals['internal']['num'])
@@ -1906,6 +1908,10 @@ Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, mode, tables, key_cv,
 
     if mode == 'insert':
         return generic_db_insert(db_obj, db_cur, tables, key_cv, value_cv,
+                                 where_str, where_args)
+
+    if mode == 'delete':
+        return generic_db_delete(db_obj, db_cur, tables, key_cv, value_cv,
                                  where_str, where_args)
 
 
@@ -2081,12 +2087,75 @@ Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, tables, key_cv, value_cv,
 #        query_args.append(cv[2])
 
     # execute the query
-    ret = db_obj.execute(db_cur, query_str.split(), query_args,
-                         has_results=False)
-    return None if not ret else True
+#    ret = db_obj.execute(db_cur, query_str.split(), query_args,
+#                         has_results=False)
+#    return None if not ret else True
+    return None
 
 
-def drupal_db_query(db_obj, db_cur, mode, key_cv, value_cv):
+def generic_db_delete(db_obj, db_cur, tables, key_cv, value_cv,
+                      where_str=None, where_args=[]):
+
+    """
+    Do the actual work for generic DB deletes.
+
+    The value_cv sequence may only have one element.
+
+    Parameters:
+        see generic_db_query()
+
+    Dependencies:
+        modules: sys, nori
+
+    """
+
+    # sanity check
+    if len(value_cv) != 1:
+        nori.core.email_logger.error(
+'''Internal Error: multiple value_cv entries supplied in call to
+generic_db_delete(); call was (in expanded notation):
+
+generic_db_delete(
+    db_obj={0},
+    db_cur={1},
+    tables={2},
+    key_cv={3},
+    value_cv={4},
+    where_str={5},
+    where_args={6}
+)
+
+Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, tables, key_cv, value_cv,
+                                   where_str, where_args]))
+        )
+        sys.exit(nori.core.exitvals['internal']['num'])
+
+    # assemble the query string and argument list
+#    query_args = []
+#    query_str = 'DELETE FROM'
+#    if isinstance(tables, nori.core.MAIN_SEQUENCE_TYPES):
+#        query_str += ', '.join(tables)
+#    else:
+#        query_str += tables
+#    query_str += '\n'
+#    set_parts = []
+#    query_str += 'SET ' + ', '.join(set_parts) + '\n'
+#    for cv in key_cv:
+#        if len(cv) > 2:
+#            where_parts.append('({0} = %s)'.format(cv[0]))
+#            query_args.append(cv[2])
+#    for cv in value_cv:
+#        set_parts.append('{0} = %s'.format(cv[0]))
+#        query_args.append(cv[2])
+
+    # execute the query
+#    ret = db_obj.execute(db_cur, query_str.split(), query_args,
+#                         has_results=False)
+#    return None if not ret else True
+    return None
+
+
+def drupal_db_query(db_obj, db_cur, mode, scope, key_cv, value_cv):
 
     """
     Drupal 'DB query function' for use in templates.
@@ -2202,7 +2271,11 @@ def drupal_db_query(db_obj, db_cur, mode, key_cv, value_cv):
     Parameters:
         db_obj: the database connection object to use
         db_cur: the database cursor object to use
-        mode: 'read', 'update', or 'insert'
+        mode: 'read', 'update', 'insert', or 'delete'
+        scope: for the 'update', 'insert', and 'delete' modes, whether
+               the diff being synced is at the value ('v') level or the
+               key ('k') level
+               [ignored for updates and inserts]
         key_cv: a sequence of 2- or 3-tuples indicating the names of the
                 'key' fields, their associated data types, and
                 (optionally) values to require for them (see above)
@@ -2218,7 +2291,7 @@ def drupal_db_query(db_obj, db_cur, mode, key_cv, value_cv):
 
     """
 
-    if mode != 'read' and mode != 'update' and mode != 'insert':
+    if mode not in ['read', 'update', 'insert', 'delete']:
         nori.core.email_logger.error(
 '''Internal Error: invalid mode supplied in call to
 drupal_db_query(); call was (in expanded notation):
@@ -2227,11 +2300,12 @@ drupal_db_query(
     db_obj={0},
     db_cur={1},
     mode={2},
-    key_cv={3},
-    value_cv={4}
+    scope={3},
+    key_cv={4},
+    value_cv={5}
 )
 
-Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, mode, key_cv,
+Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, mode, scope, key_cv,
                                    value_cv]))
         )
         sys.exit(nori.core.exitvals['internal']['num'])
@@ -2322,6 +2396,9 @@ Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, mode, key_cv,
 
     if mode == 'insert':
         return drupal_db_insert(db_obj, db_cur, key_cv, value_cv)
+
+    if mode == 'delete':
+        return drupal_db_delete(db_obj, db_cur, scope, key_cv, value_cv)
 
 
 def drupal_db_read(db_obj, db_cur, key_cv, value_cv):
@@ -3098,6 +3175,15 @@ Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, key_cv, value_cv]))
         )
         sys.exit(nori.core.exitvals['internal']['num'])
 
+    # NULLs need to be deleted, not updated
+    if value_cv[0][2] is None:
+        nori.core.status_logger.info(
+            "Drupal databases can't contain NULLs; "
+            "deleting the row instead."
+        )
+        # updater is only ever called if scope is 'v'
+        return drupal_db_delete(db_obj, db_cur, 'v', key_cv, value_cv)
+
     # prepare for a transaction
     db_ac = db_obj.autocommit(None)
     db_obj.autocommit(False)
@@ -3609,6 +3695,16 @@ AND f.deleted = 0
     db_obj.autocommit(db_ac)
     if not ret:
         return None
+
+    # was anything actually updated?
+    if db_cur.rowcount == 0:
+        # there was no row there to update, have to insert it
+        nori.core.status_logger.info(
+            'Row was missing and could not be updated; '
+            'inserting it instead.'
+        )
+        return drupal_db_insert(db_obj, db_cur, key_cv, value_cv)
+
     return True
 
 
@@ -3664,6 +3760,10 @@ drupal_db_insert(
 Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, key_cv, value_cv]))
         )
         sys.exit(nori.core.exitvals['internal']['num'])
+
+    # don't insert NULLs
+    if value_cv[0][2] is None:
+        return True
 
     #
     # node -> field (including term references)
@@ -4045,10 +4145,449 @@ Skipping insert.''' .
         return True
 
 
+def drupal_db_delete(db_obj, db_cur, scope, key_cv, value_cv):
+
+    """
+    Do the actual work for generic Drupal DB deletes.
+
+    Returns True (success), False (partial success), or None (failure).
+
+    The value_cv sequence may only have one element.
+
+    Parameters:
+        see drupal_db_query()
+
+    Dependencies:
+        functions: get_drupal_chain_type()
+        modules: sys, nori
+
+    """
+
+    # sanity check
+    if len(value_cv) != 1:
+        nori.core.email_logger.error(
+'''Internal Error: multiple value_cv entries supplied in call to
+drupal_db_delete(); call was (in expanded notation):
+
+drupal_db_delete(
+    db_obj={0},
+    db_cur={1},
+    scope={2},
+    key_cv={3},
+    value_cv={4}
+)
+
+Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, scope, key_cv,
+                                   value_cv]))
+        )
+        sys.exit(nori.core.exitvals['internal']['num'])
+
+    # get the chain type
+    chain_type = get_drupal_chain_type(key_cv, value_cv)
+    if not chain_type:
+        nori.core.email_logger.error(
+'''Internal Error: invalid field list supplied in call to
+drupal_db_delete(); call was (in expanded notation):
+
+drupal_db_delete(
+    db_obj={0},
+    db_cur={1},
+    scope={2},
+    key_cv={3},
+    value_cv={4}
+)
+
+Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, scope, key_cv,
+                                   value_cv]))
+        )
+        sys.exit(nori.core.exitvals['internal']['num'])
+
+    #
+    # node -> field (including term references)
+    #
+    if chain_type == 'n-f':
+        # node details
+        node_cv = key_cv[0]
+        node_ident = node_cv[0]
+        node_value_type = node_cv[1]
+        if len(node_cv) > 2:
+            node_value = node_cv[2]
+        node_type = node_ident[1]
+        node_id_type = node_ident[2]
+
+        # field details
+        field_cv = value_cv[0]
+        field_ident = field_cv[0]
+        field_value_type = field_cv[1]
+        if len(field_cv) > 2:
+            field_value = field_cv[2]
+        field_name = field_ident[1]
+
+        # get the node IDs
+        ret = get_drupal_node_ids(db_obj, db_cur, node_cv)
+        if ret is None or (len(ret) > 1):
+            if ret is None:
+                problem = 'could not get the IDs of'
+            else:
+                problem = 'multiple entries found for'
+            nori.core.email_logger.error(
+'''Warning: {0} the following parent node:
+    node_type: {1}
+    node_id_type: {2}
+    node_value: {3}
+Skipping delete.''' .
+                format(problem, *map(nori.pps, [node_type, node_id_type,
+                                                node_value]))
+            )
+            return None
+        if not ret:
+            return True  # assume it's all been deleted already
+        nid, vid = ret[0]
+
+        # delete the field entry
+        return delete_drupal_field(db_obj, db_cur, 'node', node_type, nid,
+                                   vid, field_cv)
+
+        # we're not going to delete nodes, so just ignore scope
+
+    #
+    # node -> relation -> node
+    #
+    if chain_type == 'n-r-n':
+        # key-node details
+        k_node_cv = key_cv[0]
+        k_node_ident = k_node_cv[0]
+        k_node_value_type = k_node_cv[1]
+        if len(k_node_cv) > 2:
+            k_node_value = k_node_cv[2]
+        k_node_type = k_node_ident[1]
+        k_node_id_type = k_node_ident[2]
+
+        # relation details
+        relation_cv = key_cv[1]
+        relation_ident = relation_cv[0]
+        relation_type = relation_ident[1]
+        if len(relation_ident) > 2:
+            relation_field_name = relation_ident[2]
+            relation_value_type = relation_cv[1]
+            relation_value = relation_cv[2]
+
+        # value-node details
+        v_node_cv = value_cv[0]
+        v_node_ident = v_node_cv[0]
+        v_node_value_type = v_node_cv[1]
+        if len(v_node_cv) > 2:
+            v_node_value = v_node_cv[2]
+        v_node_type = v_node_ident[1]
+        v_node_id_type = v_node_ident[2]
+
+        # get the key-node ID
+        if k_node_id_type == 'id':
+            k_nid = k_node_value
+        elif k_node_id_type == 'title':
+            ret = get_drupal_node_ids(db_obj, db_cur, k_node_cv)
+            if ret is None or (len(ret) > 1):
+                if ret is None:
+                    problem = 'could not get the IDs of'
+                else:
+                    problem = 'multiple entries found for'
+                nori.core.email_logger.error(
+'''Warning: {0} the following linked node:
+    node_type: {1}
+    node_id_type: {2}
+    node_value: {3}
+Skipping delete.''' .
+                    format(problem, *map(nori.pps, [k_node_type,
+                                                    k_node_id_type,
+                                                    k_node_value]))
+                )
+                return None
+            if not ret:
+                return True  # assume it's all been deleted already
+            k_nid, k_vid = ret[0]
+
+        # get the value-node ID
+        if v_node_id_type == 'id':
+            v_nid = v_node_value
+        elif v_node_id_type == 'title':
+            ret = get_drupal_node_ids(db_obj, db_cur, v_node_cv)
+            if ret is None or (len(ret) > 1):
+                if ret is None:
+                    problem = 'could not get the IDs of'
+                else:
+                    problem = 'multiple entries found for'
+                nori.core.email_logger.error(
+'''Warning: {0} the following linked node:
+    node_type: {1}
+    node_id_type: {2}
+    node_value: {3}
+Skipping delete.''' .
+                    format(problem, *map(nori.pps, [v_node_type,
+                                                    v_node_id_type,
+                                                    v_node_value]))
+                )
+                return None
+            if not ret:
+                return True  # assume it's all been deleted already
+            v_nid, v_vid = ret[0]
+
+        # delete the relation
+        return delete_drupal_relation(db_obj, db_cur, 'node', k_nid,
+                                      relation_cv, 'node', v_nid)
+
+        # we're not going to delete nodes, so just ignore scope
+
+    #
+    # node -> relation & node -> relation_field (incl. term refs)
+    #
+    if chain_type == 'n-rn-rf':
+        # node1 details
+        node1_cv = key_cv[0]
+        node1_ident = node1_cv[0]
+        node1_value_type = node1_cv[1]
+        if len(node1_cv) > 2:
+            node1_value = node1_cv[2]
+        node1_type = node1_ident[1]
+        node1_id_type = node1_ident[2]
+
+        # relation details
+        relation_cv = key_cv[1]
+        relation_ident = relation_cv[0]
+        relation_type = relation_ident[1]
+        if len(relation_ident) > 2:
+            relation_field_name = relation_ident[2]
+            relation_value_type = relation_cv[1]
+            relation_value = relation_cv[2]
+
+        # node2 details
+        node2_cv = key_cv[2]
+        node2_ident = node2_cv[0]
+        node2_value_type = node2_cv[1]
+        if len(node2_cv) > 2:
+            node2_value = node2_cv[2]
+        node2_type = node2_ident[1]
+        node2_id_type = node2_ident[2]
+
+        # field details
+        field_cv = value_cv[0]
+        field_ident = field_cv[0]
+        field_value_type = field_cv[1]
+        if len(field_cv) > 2:
+            field_value = field_cv[2]
+        field_name = field_ident[1]
+
+        # get node1's ID
+        if node1_id_type == 'id':
+            node1_nid = node1_value
+        elif node1_id_type == 'title':
+            ret = get_drupal_node_ids(db_obj, db_cur, node1_cv)
+            if ret is None or (len(ret) > 1):
+                if ret is None:
+                    problem = 'could not get the IDs of'
+                else:
+                    problem = 'multiple entries found for'
+                nori.core.email_logger.error(
+'''Warning: {0} the following linked node:
+    node_type: {1}
+    node_id_type: {2}
+    node_value: {3}
+Skipping delete.''' .
+                    format(problem, *map(nori.pps, [node1_type,
+                                                    node1_id_type,
+                                                    node1_value]))
+                )
+                return None
+            if not ret:
+                return True  # assume it's all been deleted already
+            node1_nid, node1_vid = ret[0]
+
+        # get node2's ID
+        if node2_id_type == 'id':
+            node2_nid = node2_value
+        elif node2_id_type == 'title':
+            ret = get_drupal_node_ids(db_obj, db_cur, node2_cv)
+            if ret is None or (len(ret) > 1):
+                if ret is None:
+                    problem = 'could not get the IDs of'
+                else:
+                    problem = 'multiple entries found for'
+                nori.core.email_logger.error(
+'''Warning: {0} the following linked node:
+    node_type: {1}
+    node_id_type: {2}
+    node_value: {3}
+Skipping delete.''' .
+                    format(problem, *map(nori.pps, [node2_type,
+                                                    node2_id_type,
+                                                    node2_value]))
+                )
+                return None
+            if not ret:
+                return True  # assume it's all been deleted already
+            node2_nid, node2_vid = ret[0]
+
+        if scope == 'k':
+            # delete the relation
+            return delete_drupal_relation(db_obj, db_cur, 'node', node1_nid,
+                                          relation_cv, 'node', node2_nid)
+
+            # leave the nodes alone
+
+        # otherwise, scope is 'v'
+
+        # get the relation's IDs
+        ret = get_drupal_relation_ids(db_obj, db_cur, 'node', node1_nid,
+                                      relation_cv, 'node', node2_nid)
+        if ret is None or (len(ret) > 1):
+            if ret is None:
+                problem = 'could not get the IDs of'
+            else:
+                problem = 'multiple entries found for'
+            if len(relation_ident) > 2:
+                msg = (
+'''Warning: {0} the following relation:
+    type: {1}
+    field_name: {2}
+    field_value: {3}
+with the following endpoints:
+''' .
+                    format(problem, relation_type, relation_field_name,
+                           relation_value)
+                )
+            else:
+                msg = (
+'''Warning: {0} the {1} relation with
+the following endpoints:
+''' .
+                    format(problem, relation_type)
+                )
+            msg += (
+'''    node1_type: {0}
+    node1_id_type: {1}
+    node1_value: {2}
+    node2_type: {3}
+    node2_id_type: {4}
+    node2_value: {5}
+Skipping delete.''' .
+                format(*map(nori.pps, [node1_type, node1_id_type,
+                                       node1_value, node2_type,
+                                       node2_id_type, node2_value]))
+            )
+            nori.core.email_logger.error(msg)
+            return None
+        if not ret:
+            return True  # assume it's all been deleted already
+        rid, vid = ret[0]
+
+        # delete the field entry
+        return delete_drupal_field(db_obj, db_cur, 'relation',
+                                   relation_type, rid, vid, field_cv)
+
+    #
+    # node -> fc -> field (including term references)
+    #
+    if chain_type == 'n-fc-f':
+        # node details
+        node_cv = key_cv[0]
+        node_ident = node_cv[0]
+        node_value_type = node_cv[1]
+        if len(node_cv) > 2:
+            node_value = node_cv[2]
+        node_type = node_ident[1]
+        node_id_type = node_ident[2]
+
+        # fc details
+        fc_cv = key_cv[1]
+        fc_ident = fc_cv[0]
+        fc_value_type = fc_cv[1]
+        if len(fc_cv) > 2:
+            fc_value = fc_cv[2]
+        fc_type = fc_ident[1]
+        fc_id_type = fc_ident[2]
+
+        # field details
+        field_cv = value_cv[0]
+        field_ident = field_cv[0]
+        field_value_type = field_cv[1]
+        if len(field_cv) > 2:
+            field_value = field_cv[2]
+        field_name = field_ident[1]
+
+        # get the node IDs
+        ret = get_drupal_node_ids(db_obj, db_cur, node_cv)
+        if ret is None or (len(ret) > 1):
+            if ret is None:
+                problem = 'could not get the IDs of'
+            else:
+                problem = 'multiple entries found for'
+            nori.core.email_logger.error(
+'''Warning: {0} the following parent node:
+    node_type: {1}
+    node_id_type: {2}
+    node_value: {3}
+Skipping delete.''' .
+                format(problem, *map(nori.pps, [node_type, node_id_type,
+                                                node_value]))
+            )
+            return None
+        if not ret:
+            return True  # assume it's all been deleted already
+        n_id, n_vid = ret[0]
+
+        if scope == 'k':
+            # delete the field collection
+            return delete_drupal_fc(db_obj, db_cur, 'node', node_type, n_id,
+                                    n_vid, fc_cv)
+
+            # leave the node alone
+
+        # otherwise, scope is 'v'
+
+        # get the field collection's IDs
+        ret = get_drupal_fc_ids(db_obj, db_cur, 'node', node_type, n_id,
+                                n_vid, fc_cv)
+        if ret is None or (len(ret) > 1):
+            if ret is None:
+                problem = 'could not get the IDs of'
+            else:
+                problem = 'multiple entries found for'
+            msg = (
+'''Warning: {0} the following Drupal parent field
+collection:
+    fc_type: {1}'''.format(problem, nori.pps(fc_type))
+            )
+            if len(fc_cv) > 2:
+                msg += (
+'''
+    fc_id_type: {0}
+    fc_value: {1}'''.format(*map(nori.pps, [fc_id_type, fc_value]))
+                )
+            msg += (
+'''
+under the following parent node:
+    node_type: {0}
+    node_id_type: {1}
+    node_value: {2}
+Skipping delete.''' .
+                format(*map(nori.pps, [node_type, node_id_type,
+                                       node_value]))
+            )
+            nori.core.email_logger.error(msg)
+            return None
+        if not ret:
+            return True  # assume it's all been deleted already
+        fc_id, fc_vid = ret[0]
+
+        # delete the field entry
+        return delete_drupal_field(db_obj, db_cur, 'field_collection_item',
+                                   'field_' + fc_type, fc_id, fc_vid,
+                                   field_cv)
+
+
 def drupal_db_update_timestamps(db_obj, db_cur, key_cv, value_cv):
 
     """
-    Update Drupal timestamps; use after updates or inserts.
+    Update Drupal timestamps; use after updates, inserts, or deletes.
 
     Returns True (success) / False (failure).
 
@@ -4172,8 +4711,9 @@ Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, key_cv, value_cv]))
     return True
 
 
-def drupal_timestamp_callback(t_index, s_row, d_row, new_key_cv,
-                              new_value_cv, d_db, d_cur, diff_k, diff_i):
+def drupal_timestamp_callback(t_index, mode, scope, s_row, d_row,
+                              new_key_cv, new_value_cv, d_db, d_cur, diff_k,
+                              diff_i):
     """
     A wrapper around drupal_db_update_timestamps().
     Interfaces between what's passed to callbacks and what the function
@@ -4607,6 +5147,50 @@ under the following parent entity:
         )
         return None
     return ret[1][0]
+
+
+def get_drupal_field_list(db_obj, db_cur, entity_type, bundle):
+
+    """
+    Get the names of all fields in a specified Drupal entity.
+
+    Returns None on error, an empty array if there are no results, or
+    an array of field name strings.
+
+    Parameters:
+        db_obj: the database connection object to use
+        db_cur: the database cursor object to use
+        entity_type: the type (e.g., 'node') of the entity to check
+        bundle: the bundle (e.g., node content type) of the entity to
+                check
+
+    """
+
+    # query string and arguments
+    query_str = (
+'''
+SELECT fci.field_name
+FROM field_config_instance as fci
+LEFT JOIN field_config as fc
+ON fc.id = fci.field_id
+WHERE fci.entity_type = %s
+AND fci.bundle = %s
+AND fc.deleted = 0
+'''
+    )
+    query_args = [entity_type, bundle]
+
+    # execute the query
+    if not db_obj.execute(db_cur, query_str.strip(), query_args,
+                          has_results=True):
+        return None
+    ret = db_obj.fetchall(db_cur)
+    if not ret[0]:
+        return None
+    if not ret[1]:
+        return []
+
+    return [x[0][6:] for x in ret[1] if x[0].startswith('field_')]
 
 
 def get_drupal_field_defaults(db_obj, db_cur, entity_type, bundle):
@@ -5295,10 +5879,10 @@ def insert_drupal_field(db_obj, db_cur, entity_type, bundle, entity_id,
         field_cv: the entry for the field in a template key_cv or
                   value_cv sequence
         extra_data: a sequence of (column name, value) tuples to add to
-                    the insert query
-        no_trans: if true, don't wrap the call in a new DB transaction;
-                  use this when the caller is already handling
-                  transaction management
+                    the database queries
+        no_trans: if true, don't wrap the database queries in a new
+                  transaction; use this when the caller is already
+                  handling transaction management
 
     Dependencies:
         functions: drupal_field_ok_to_insert(), get_drupal_term_id()
@@ -5376,6 +5960,450 @@ VALUES
         )
         query_args = [entity_type, bundle, entity_id, revision_id,
                       insert_delta, field_value]
+        if extra_values:
+            query_args += extra_values
+
+        if not db_obj.execute(db_cur, query_str.strip(), query_args,
+                              has_results=False):
+            # won't be reached currently; script will exit on errors
+            if not no_trans:
+                db_obj.rollback()  # ignore errors
+                db_obj.autocommit(db_ac)
+            return None
+    if not no_trans:
+        ret = db_obj.commit()
+        db_obj.autocommit(db_ac)
+        return None if not ret else True
+    else:
+        return True
+
+
+def delete_drupal_relation(db_obj, db_cur, e1_entity_type, e1_entity_id,
+                           relation_cv, e2_entity_type, e2_entity_id):
+
+    """
+    Delete a Drupal relation.
+
+    Returns True (success), False (partial success), or None (failure).
+    (However, partial success is currently impossible.)
+
+    Parameters:
+        db_obj: the database connection object to use
+        db_cur: the database cursor object to use
+        e1_entity_type: the entity type (e.g., 'node') of the relation's
+                        first endpoint
+        e1_entity_id: the entity ID of the relation's first endpoint
+        relation_cv: the entry for the relation in a template key_cv
+                     sequence
+        e2_entity_type: the entity type (e.g., 'node') of the relation's
+                        second endpoint
+        e2_entity_id: the entity ID of the relation's second endpoint
+
+    Dependencies:
+        config settings: delayed_drupal_deletes
+        functions: get_drupal_relation_ids(), get_drupal_field_list(),
+                   delete_drupal_field()
+        modules: nori
+
+    """
+
+    # relation details
+    relation_ident = relation_cv[0]
+    relation_type = relation_ident[1]
+    if len(relation_ident) > 2:
+        relation_field_name = relation_ident[2]
+        relation_value_type = relation_cv[1]
+        relation_value = relation_cv[2]
+
+    # get the relation's IDs
+    ret = get_drupal_relation_ids(db_obj, db_cur, e1_entity_type,
+                                  e1_entity_id, relation_cv, e2_entity_type,
+                                  e2_entity_id)
+    if ret is None or (len(ret) > 1):
+        if ret is None:
+            problem = 'could not get the IDs of'
+        else:
+            problem = 'multiple entries found for'
+        if len(relation_ident) > 2:
+            msg = (
+'''Warning: {0} the following relation:
+    type: {1}
+    field_name: {2}
+    field_value: {3}
+with the following endpoints:
+''' .
+                format(problem, relation_type, relation_field_name,
+                       relation_value)
+            )
+        else:
+            msg = (
+'''Warning: {0} the {1} relation with
+the following endpoints:
+''' .
+                format(problem, relation_type)
+            )
+        msg += (
+'''    node1_type: {0}
+    node1_id_type: {1}
+    node1_value: {2}
+    node2_type: {3}
+    node2_id_type: {4}
+    node2_value: {5}
+Skipping delete.''' .
+            format(*map(nori.pps, [node1_type, node1_id_type,
+                                   node1_value, node2_type,
+                                   node2_id_type, node2_value]))
+        )
+        nori.core.email_logger.error(msg)
+        return None
+    if not ret:
+        return True  # assume it's all been deleted already
+    relation_id = ret[0][0]
+    relation_rev = ret[0][1]
+
+    # get the field list
+    flist = get_drupal_field_list(db_obj, db_cur, 'relation', relation_type)
+    if flist is None:
+        # won't be reached currently; script will exit on errors
+        return None
+
+    # prepare for a transaction
+    db_ac = db_obj.autocommit(None)
+    db_obj.autocommit(False)
+
+    # remove the fields
+    for field_name in flist:
+        ret = delete_drupal_field(db_obj, db_cur, 'relation', relation_type,
+                                  relation_id, relation_rev,
+                                  (('field', field_name), 'unknown'),
+                                  no_trans=True)
+        if not ret:
+            db_obj.rollback()  # ignore errors
+            db_obj.autocommit(db_ac)
+            return None
+
+    # remove the data and revision rows for the endpoints
+    for table_infix in ['data', 'revision']:
+        # query string and arguments
+        if nori.core.cfg['delayed_drupal_deletes']:
+            query_str = (
+'''
+UPDATE field_{0}_endpoints
+SET deleted = 1
+WHERE entity_type = 'relation'
+AND bundle = %s
+AND entity_id = %s
+AND revision_id = %s
+''' .
+                format(table_infix)
+            )
+        else:
+            query_str = (
+'''
+DELETE FROM field_{0}_endpoints
+WHERE entity_type = 'relation'
+AND bundle = %s
+AND deleted = 0
+AND entity_id = %s
+AND revision_id = %s
+''' .
+                format(table_infix)
+            )
+        query_args = [relation_type, relation_id, relation_rev]
+        if not db_obj.execute(db_cur, query_str.strip(), query_args,
+                              has_results=False):
+            # won't be reached currently; script will exit on errors
+            db_obj.rollback()  # ignore errors
+            db_obj.autocommit(db_ac)
+            return None
+
+    # remove the data and revision rows for the relation
+    for table_suffix in ['', '_revision']:
+        query_str = (
+'''
+DELETE FROM relation{0}
+WHERE relation_type = %s
+AND rid = %s
+AND vid = %s
+''' .
+            format(table_suffix)
+        )
+        query_args = [relation_type, relation_id, relation_rev]
+        if not db_obj.execute(db_cur, query_str.strip(), query_args,
+                              has_results=False):
+            # won't be reached currently; script will exit on errors
+            db_obj.rollback()  # ignore errors
+            db_obj.autocommit(db_ac)
+            return None
+
+    # finish the transaction
+    ret = db_obj.commit()
+    db_obj.autocommit(db_ac)
+    if not ret:
+        return None
+
+    return True
+
+
+def delete_drupal_fc(db_obj, db_cur, entity_type, bundle, entity_id,
+                     revision_id, fc_cv):
+
+    """
+    Delete a Drupal field collection.
+
+    Returns True (success), False (partial success), or None (failure).
+    (However, partial success is currently impossible.)
+
+    Parameters:
+        db_obj: the database connection object to use
+        db_cur: the database cursor object to use
+        entity_type: the entity type (e.g., 'node') of the FC's parent
+        bundle: the bundle (e.g., node content type) of the FC's parent
+        entity_id: the ID of the FC's parent
+        revision_id: the revision ID of the FC's parent
+        fc_cv: the entry for the field collection in a template key_cv
+               or value_cv sequence
+
+    Dependencies:
+        functions: get_drupal_fc_ids(), get_drupal_field_list(),
+                   delete_drupal_field()
+        modules: nori
+
+    """
+
+    # fc details
+    fc_ident = fc_cv[0]
+    fc_value_type = fc_cv[1]
+    if len(fc_cv) > 2:
+        fc_value = fc_cv[2]
+    fc_type = fc_ident[1]
+    fc_id_type = fc_ident[2]
+
+    # get the FC's IDs
+    ret = get_drupal_fc_ids(db_obj, db_cur, entity_type, bundle, entity_id,
+                            revision_id, fc_cv)
+    if ret is None or (len(ret) > 1):
+        if ret is None:
+            problem = 'could not get the IDs of'
+        else:
+            problem = 'multiple entries found for'
+        msg = (
+'''Warning: {0} the following Drupal field collection:
+    fc_type: {1}'''.format(problem, nori.pps(fc_type))
+        )
+        if len(fc_cv) > 2:
+            msg += (
+'''
+    fc_id_type: {0}
+    fc_value: {1}'''.format(*map(nori.pps, [fc_id_type, fc_value]))
+            )
+        msg += (
+'''
+under the following parent entity:
+    entity_type: {0}
+    bundle: {1}
+    entity_id: {2}
+    revision_id: {3}
+Skipping delete.''' .
+            format(*map(nori.pps, [entity_type, bundle, entity_id,
+                                   revision_id]))
+        )
+        nori.core.email_logger.error(msg)
+        return None
+    if not ret:
+        return True  # assume it's all been deleted already
+    fc_id = ret[0][0]
+    fc_rev = ret[0][1]
+
+    # get the field list
+    flist = get_drupal_field_list(db_obj, db_cur, 'field_collection_item',
+                                  fc_type)
+    if flist is None:
+        # won't be reached currently; script will exit on errors
+        return None
+
+    # prepare for a transaction
+    db_ac = db_obj.autocommit(None)
+    db_obj.autocommit(False)
+
+    # remove the fields
+    for field_name in flist:
+        ret = delete_drupal_field(db_obj, db_cur, 'field_collection_item',
+                                  'field_' + fc_type, fc_id, fc_rev,
+                                  (('field', field_name), 'unknown'),
+                                  no_trans=True)
+        if not ret:
+            db_obj.rollback()  # ignore errors
+            db_obj.autocommit(db_ac)
+            return None
+
+    # remove the field collection field
+    ret = delete_drupal_field(db_obj, db_cur, entity_type, bundle,
+                              entity_id, revision_id,
+                              (('field', fc_type), 'integer', fc_id),
+                              no_trans=True)
+    if not ret:
+        db_obj.rollback()  # ignore errors
+        db_obj.autocommit(db_ac)
+        return None
+
+    # remove the data and revision rows for the field_collection
+    query_str = (
+'''
+DELETE FROM field_collection_item
+WHERE item_id = %s
+AND revision_id = %s
+AND field_name = %s
+'''
+    )
+    query_args = [fc_id, fc_rev, 'field_' + fc_type]
+    if not db_obj.execute(db_cur, query_str.strip(), query_args,
+                          has_results=False):
+        # won't be reached currently; script will exit on errors
+        db_obj.rollback()  # ignore errors
+        db_obj.autocommit(db_ac)
+        return None
+    query_str = (
+'''
+DELETE FROM field_collection_item_revision
+WHERE item_id = %s
+AND revision_id = %s
+'''
+    )
+    query_args = [fc_id, fc_rev]
+    if not db_obj.execute(db_cur, query_str.strip(), query_args,
+                          has_results=False):
+        # won't be reached currently; script will exit on errors
+        db_obj.rollback()  # ignore errors
+        db_obj.autocommit(db_ac)
+        return None
+
+    # finish the transaction
+    ret = db_obj.commit()
+    db_obj.autocommit(db_ac)
+    if not ret:
+        return None
+
+    return True
+
+
+def delete_drupal_field(db_obj, db_cur, entity_type, bundle, entity_id,
+                        revision_id, field_cv, extra_data=None,
+                        no_trans=False):
+
+    """
+    Delete a Drupal field entry.
+
+    Returns True (success), False (partial success), or None (failure).
+    (However, partial success is currently impossible.)
+
+    Parameters:
+        db_obj: the database connection object to use
+        db_cur: the database cursor object to use
+        entity_type: the entity type (e.g., 'node') of the field's
+                     parent
+        bundle: the bundle (e.g., node content type) of the field's
+                parent
+        entity_id: the ID of the field's parent
+        revision_id: the revision ID of the field's parent
+        field_cv: the entry for the field in a template key_cv or
+                  value_cv sequence
+        extra_data: a sequence of (column name, value) tuples to add to
+                    the database queries
+        no_trans: if true, don't wrap the database queries in a new
+                  transaction; use this when the caller is already
+                  handling transaction management
+
+    Dependencies:
+        config settings: delayed_drupal_deletes
+        functions: get_drupal_term_id()
+        modules: operator, nori
+
+    """
+
+    # we need to be able to modify extra_data without affecting later
+    # defaults; see, e.g., http://effbot.org/zone/default-values.htm
+    if extra_data is None:
+        extra_data = []
+
+    # field details
+    field_ident = field_cv[0]
+    field_value_type = field_cv[1]
+    # we may be passed None, but we can't match against it
+    if len(field_cv) > 2 and field_cv[2] is not None:
+        field_value = field_cv[2]
+    field_name = field_ident[1]
+
+    # handle value types
+    value_cond = ''
+    if len(field_cv) > 2 and field_cv[2] is not None:
+        if field_value_type.startswith('term: '):
+            ret = get_drupal_term_id(db_obj, db_cur, field_value_type[6:],
+                                     field_value)
+            if not ret:
+                nori.core.email_logger.error(
+                    'Warning: could not get the ID of term {0} in Drupal\n'
+                    'vocabulary {1}; skipping delete.' .
+                    format(*map(nori.pps, [field_value,
+                                           field_value_type[6:]]))
+                )
+                return None
+            field_value = ret[0]
+            value_cond = 'AND field_' + field_name + '_tid = %s'
+        elif field_value_type == 'ip':
+            value_cond = 'AND field_' + field_name + '_start = %s'
+            extra_data.append(('field_' + field_name + '_end', field_value))
+        else:
+            value_cond = 'AND field_' + field_name + '_value = %s'
+
+    # handle extra data
+    extra_conds = []
+    extra_values = []
+    for extra_t in extra_data:
+        extra_conds.append('AND {0} = %s'.format(extra_t[0]))
+        extra_values.append(extra_t[1])
+
+    # insert data and revision rows
+    if not no_trans:
+        db_ac = db_obj.autocommit(None)
+        db_obj.autocommit(False)
+    for table_infix in ['data', 'revision']:
+        # query string and arguments
+        if nori.core.cfg['delayed_drupal_deletes']:
+            query_str = (
+'''
+UPDATE field_{0}_field_{1}
+SET deleted = 1
+WHERE entity_type = %s
+AND bundle = %s
+AND entity_id = %s
+AND revision_id = %s
+{2}
+{3}
+''' .
+                format(table_infix, field_name,
+                       value_cond,
+                       '\n'.join(extra_conds))
+            )
+        else:
+            query_str = (
+'''
+DELETE FROM field_{0}_field_{1}
+WHERE entity_type = %s
+AND bundle = %s
+AND deleted = 0
+AND entity_id = %s
+AND revision_id = %s
+{2}
+{3}
+''' .
+                format(table_infix, field_name,
+                       value_cond,
+                       '\n'.join(extra_conds))
+            )
+        query_args = [entity_type, bundle, entity_id, revision_id]
+        if len(field_cv) > 2 and field_cv[2] is not None:
+            query_args.append(field_value)
         if extra_values:
             query_args += extra_values
 
@@ -5669,17 +6697,21 @@ def key_filter(template_index, num_keys, row):
 
 def key_value_copy(source_data, dest_data, dest_key_cv, dest_value_cv):
     """
-    Transfer the values from a source DB row to the dest DB k/v seqs.
-    Returns a tuple of (key_cv, value_cv), where the value_cv sequence
-    contains elements for data that differs between the source and
-    destination.
-    If dest_data is not None, the source_data tuple, dest_data tuple, and
-    (dest_key_cv + dest_value_cv) must all be the same length, and the
-    number of keys in the each data tuple must be the same as the length of
-    dest_key_cv.
+    Transfer the values from a DB result row to the dest DB k/v seqs.
+    Returns a tuple of (key_cv, value_cv):
+        * If dest_data is None, the source data is used.
+        * If source_data is None, the destination data is used.
+        * Otherwise, the source data is used, and the value_cv sequence
+          contains elements only for data that differs between the
+          source and destination databases.
+    The source_data tuple, dest_data tuple, and (dest_key_cv +
+    dest_value_cv) must all be the same length (or None, where
+    applicable), and the number of keys in the each data tuple must be
+    the same as the length of dest_key_cv.
     Parameters:
         source_data: a row tuple from the source database results, as
-                     modified by the transform function
+                     modified by the transform function, or None if
+                     there is no matching row
         dest_data: a row tuple from the destination database results, as
                      modified by the transform function, or None if
                      there is no matching row
@@ -5691,13 +6723,16 @@ def key_value_copy(source_data, dest_data, dest_key_cv, dest_value_cv):
     new_dest_key_cv = []
     new_dest_value_cv = []
     num_keys = len(dest_key_cv)
-    for i, data_val in enumerate(source_data):
+    to_copy = source_data if source_data is not None else dest_data
+    for i, data_val in enumerate(to_copy):
         if i < num_keys:
             new_dest_key_cv.append(
                 (dest_key_cv[i][0], dest_key_cv[i][1], data_val)
             )
         else:
-            if (dest_data is None) or (data_val != dest_data[i]):
+            if (source_data is None or
+                  dest_data is None or
+                  data_val != dest_data[i]):
                 new_dest_value_cv.append(
                     (dest_value_cv[i - num_keys][0],
                      dest_value_cv[i - num_keys][1], data_val)
@@ -5922,7 +6957,7 @@ def do_diff_report():
 # the 'reverse' setting
 #
 
-def do_sync(t_index, s_row, d_row, d_db, d_cur, diff_k, diff_i):
+def do_sync(t_index, scope, s_row, d_row, d_db, d_cur, diff_k, diff_i):
 
     """
     Actually sync data to the destination database.
@@ -5933,6 +6968,8 @@ def do_sync(t_index, s_row, d_row, d_db, d_cur, diff_k, diff_i):
     Parameters:
         t_index: the index of the relevant template in the templates
                  setting
+        scope: whether the diff being synced is at the value ('v') level
+               or the key ('k') level
         s_row: a tuple of (number of keys, transformed source data
                tuple)
         d_row: a tuple of (number of keys, transformed destination data
@@ -5949,13 +6986,13 @@ def do_sync(t_index, s_row, d_row, d_db, d_cur, diff_k, diff_i):
                          dest_query_func,
                          dest_template_change_callbacks, templates
         globals: (some of) T_*
-        functions: key_value_copy(), update_insert_dispatcher(),
-                   update_diff(), (callbacks)
+        functions: key_value_copy(), query_dispatcher(), update_diff(),
+                   (callbacks)
         modules: nori
 
     """
 
-    # get settings and resources
+    # get settings
     template = nori.core.cfg['templates'][t_index]
     t_multiple = template[T_MULTIPLE_KEY]
     if not nori.core.cfg['reverse']:
@@ -5974,29 +7011,19 @@ def do_sync(t_index, s_row, d_row, d_db, d_cur, diff_k, diff_i):
         dest_no_repl = template[T_S_NO_REPL_KEY]
         t_change_cb = template[T_S_CHANGE_CB_KEY]
         db_change_cb = nori.core.cfg['source_template_change_callbacks']
-    mode = 'insert' if t_multiple else 'update'
 
-    # get the new cv sequences and deal with NULLs
+    # what do we need to do?
+    if d_row == (None, None):
+        mode = 'insert'
+    elif s_row == (None, None):
+        mode = 'delete'
+    else:
+        mode = 'update'
+
+    # get the new cv sequences
     new_key_cv, new_value_cv = key_value_copy(
         s_row[1], d_row[1], dest_kwargs['key_cv'], dest_kwargs['value_cv']
     )
-    if dest_type == 'drupal':
-        if d_row[1]:
-            # there was a matching row
-            if None in [x[2] for x in new_value_cv]:
-                nori.core.status_logger.info(
-"""The source data includes NULLs, but Drupal databases can't contain NULLs.
-In reality, those fields should be deleted, but that isn't implemented yet.
-Skipping this {0}.""".format(mode)
-                )
-                return False
-        else:
-            # there was no matching row, so just don't insert the NULLs
-            clean_new_value_cv = []
-            for i, cv in enumerate(new_value_cv):
-                if cv[2] is not None:
-                    clean_new_value_cv.append(cv)
-            new_value_cv = clean_new_value_cv
 
     # turn off replication?
     if dest_no_repl:
@@ -6008,11 +7035,11 @@ Skipping this {0}.""".format(mode)
         db_obj.replication(db_cur, False)
         nori.core.status_logger.info('Replication is now off.')
 
-    # do the updates / inserts
+    # do the updates / inserts / deletes
     global_callbacks_needed = False
-    status = update_insert_dispatcher(
-        mode, d_db, d_cur, dest_func, dest_args, dest_kwargs, new_key_cv,
-        new_value_cv
+    status = query_dispatcher(
+        mode, scope, d_db, d_cur, dest_func, dest_args, dest_kwargs,
+        new_key_cv, new_value_cv
     )
     if status is not None:
         global_callbacks_needed = True
@@ -6033,10 +7060,10 @@ Skipping this {0}.""".format(mode)
                     'Calling {0}-level per-template change callback {1} '
                     'of {2}...'.format(descr, (i + 1), num_cbs)
                 )
-                ret = cb(*args, t_index=t_index, s_row=s_row, d_row=d_row,
-                         new_key_cv=new_key_cv, new_value_cv=new_value_cv,
-                         d_db=d_db, d_cur=d_cur, diff_k=diff_k,
-                         diff_i=diff_i, **kwargs)
+                ret = cb(*args, t_index=t_index, mode=mode, scope=scope,
+                         s_row=s_row, d_row=d_row, new_key_cv=new_key_cv,
+                         new_value_cv=new_value_cv, d_db=d_db, d_cur=d_cur,
+                         diff_k=diff_k, diff_i=diff_i, **kwargs)
                 nori.core.status_logger.info(
                     'Callback complete.' if ret else 'Callback failed.'
                 )
@@ -6106,11 +7133,13 @@ def do_diff_sync(t_index, s_rows, d_rows, d_db, d_cur):
                     if nori.core.cfg['bidir']:
                         d_found.append(di)
                     if d_vals != s_vals:
+                        # CASES: single-valued: diff d val, no s val,
+                        #                       no d val
                         diff_k, diff_i = log_diff(t_index, True, s_row,
                                                   True, d_row)
                         if nori.core.cfg['action'] == 'sync':
-                            if do_sync(t_index, s_row, d_row, d_db, d_cur,
-                                       diff_k, diff_i):
+                            if do_sync(t_index, 'v', s_row, d_row, d_db,
+                                       d_cur, diff_k, diff_i):
                                 global_callbacks_needed = True
                     break
             else:  # multiple-row matching
@@ -6122,9 +7151,14 @@ def do_diff_sync(t_index, s_rows, d_rows, d_db, d_cur):
 
         # row not found
         if not s_found:
-            diff_k, diff_i = log_diff(t_index, True, s_row, False, None)
+            # CASES: single-valued: no d key
+            #        multiple-valued: [diff d val], no d val, no d key
+            exists_in_dest = None if (t_multiple and d_rows) else False
+            diff_k, diff_i = log_diff(t_index, True, s_row, exists_in_dest,
+                                      None)
             if nori.core.cfg['action'] == 'sync':
-                if do_sync(t_index, s_row, (None, None), d_db, d_cur,
+                scope = 'v' if (t_multiple and d_rows) else 'k'
+                if do_sync(t_index, scope, s_row, (None, None), d_db, d_cur,
                            diff_k, diff_i):
                     global_callbacks_needed = True
 
@@ -6132,8 +7166,17 @@ def do_diff_sync(t_index, s_rows, d_rows, d_db, d_cur):
     if nori.core.cfg['bidir']:
         for di, d_row in enumerate(d_rows):
             if di not in d_found:
-                log_diff(t_index, False, None, True, d_row)
-
+                # CASES: single-valued: no s key
+                #        multiple-valued: no s val, no s key
+                exists_in_source = (None if (t_multiple and s_rows)
+                                         else False)
+                diff_k, diff_i = log_diff(t_index, exists_in_source, None,
+                                          True, d_row)
+                if nori.core.cfg['action'] == 'sync':
+                    scope = 'v' if (t_multiple and d_rows) else 'k'
+                    if do_sync(t_index, scope, (None, None), d_row, d_db,
+                               d_cur, diff_k, diff_i):
+                        global_callbacks_needed = True
     return global_callbacks_needed
 
 
@@ -6187,8 +7230,8 @@ def run_mode_hook():
         globals: (some of) T_*, post_action_callbacks, diff_dict, sourcedb,
                  destdb
         functions: dispatch_post_action_callbacks(), key_filter(),
-                   log_diff(), do_diff_report(), do_diff_sync(),
-                   (functions in templates), (callback functions)
+                   do_diff_report(), do_diff_sync(), (functions in
+                   templates), (callback functions)
         modules: atexit, collections, nori
 
     """
@@ -6273,7 +7316,7 @@ def run_mode_hook():
 
         # get the source data
         s_rows_raw = source_func(*source_args, db_obj=s_db, db_cur=s_cur,
-                                 mode='read', **source_kwargs)
+                                 mode='read', scope=None, **source_kwargs)
         if s_rows_raw is None:
             # shouldn't actually happen; errors will cause the script to
             # exit before this, as currently written
@@ -6303,7 +7346,7 @@ def run_mode_hook():
 
         # get the destination data
         d_rows_raw = dest_func(*dest_args, db_obj=d_db, db_cur=d_cur,
-                               mode='read', **dest_kwargs)
+                               mode='read', scope=None, **dest_kwargs)
         if d_rows_raw is None:
             # shouldn't actually happen; errors will cause the
             # script to exit before this, as currently written
@@ -6369,8 +7412,9 @@ def run_mode_hook():
                 for d_keys in d_row_groups:
                     if d_keys not in d_keys_found:
                         # not even a key match
-                        for d_row in d_row_groups[d_keys]:
-                            log_diff(t_index, None, None, True, d_row)
+                        if do_diff_sync(t_index, [], d_row_groups[d_keys],
+                                        d_db, d_cur):
+                            global_callbacks_needed = True
 
         #
         # end of template loop
