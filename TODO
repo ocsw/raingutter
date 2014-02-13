@@ -6,6 +6,8 @@ OCS:
 
 testing
 
+key selection
+
 ---
 
 OCS:
@@ -31,9 +33,9 @@ update timestamp on previous node when updating n->r->n?
 
 remove cursors?
 
-generic_db_insert
+generic_db_insert, delete
 
-deletes, e.g. if source is NULL and dest isn't
+memoization?
 
 handle interpreting drupal field defaults
 
@@ -45,6 +47,8 @@ more examples/sql, esp for drupal?
 error handling: exit/skip?
 
 autocommit options
+
+global/template u/i/d settings?
 
 node -> title, fc -> label, etc. (?) (and autolabels in config)
 
