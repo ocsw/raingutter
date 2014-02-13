@@ -260,8 +260,9 @@ other *args and **kwargs:
     s_cur: the source-database cursor object to use
     d_db: the destination-database connection object to use
     d_cur: the destination-database cursor object to use
-Note that 'source' and 'destination' here are subject to the value of the
-'reverse' setting.
+and return True (success) or False (failure).
+(Note that 'source' and 'destination' here are subject to the value of the
+'reverse' setting.)
 
 The functions are called once, right before the diff / sync is started, in
 order.
@@ -294,8 +295,9 @@ other *args and **kwargs:
     s_cur: the source-database cursor object to use
     d_db: the destination-database connection object to use
     d_cur: the destination-database cursor object to use
-Note that 'source' and 'destination' here are subject to the value of the
-'reverse' setting.
+and return True (success) or False (failure).
+(Note that 'source' and 'destination' here are subject to the value of the
+'reverse' setting.)
 
 The functions are called once, right after the diff / sync is finished, in
 order.  Functions for which the register boolean is true will also be called
