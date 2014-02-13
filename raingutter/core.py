@@ -7332,6 +7332,11 @@ def run_mode_hook():
               t_name in nori.cfg['template_list']):
             continue
 
+        # log template start
+        nori.core.status_logger.info(
+            'Processing template {0}...'.format(nori.pps(t_name))
+        )
+
         # get the source data
         s_rows_raw = source_func(*source_args, db_obj=s_db, db_cur=s_cur,
                                  mode='read', scope=None, **source_kwargs)
@@ -7433,6 +7438,11 @@ def run_mode_hook():
                         if do_diff_sync(t_index, [], d_row_groups[d_keys],
                                         d_db, d_cur):
                             global_callbacks_needed = True
+
+        # log template finish
+        nori.core.status_logger.info(
+            'Template {0} finished.'.format(nori.pps(t_name))
+        )
 
         #
         # end of template loop

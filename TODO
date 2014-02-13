@@ -6,8 +6,6 @@ OCS:
 
 testing
 
-print template names
-
 node status
 
 timestamp updates for deletes - skip errs
