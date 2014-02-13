@@ -2489,8 +2489,9 @@ Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, key_cv, value_cv]))
             # field join
             field_joins.append(
                 'LEFT JOIN field_data_field_{0} AS f{1}\n'
-                'ON f{1}.entity_id = node.nid\n'
-                'AND f{1}.revision_id = node.vid'.format(field_names[i], i)
+                '          ON f{1}.entity_id = node.nid\n'
+                '          AND f{1}.revision_id = node.vid' .
+                format(field_names[i], i)
             )
 
             # handle value types
@@ -2498,7 +2499,7 @@ Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, key_cv, value_cv]))
                 value_columns.append('t{0}.name'.format(i))
                 term_joins.append(
                     'LEFT JOIN taxonomy_term_data AS t{0}\n'
-                    'ON t{0}.tid = f{0}.field_{1}_tid' .
+                    '          ON t{0}.tid = f{0}.field_{1}_tid' .
                     format(i, field_names[i])
                 )
             elif field_value_types[i] == 'ip':
@@ -2595,8 +2596,8 @@ ORDER BY node.title, node.nid, {7}
             # field join
             relation_field_join = (
                 'LEFT JOIN field_data_field_{0} AS k_rf\n'
-                'ON k_rf.entity_id = e2.entity_id\n'
-                'AND k_rf.revision_id = e2.revision_id' .
+                '          ON k_rf.entity_id = e2.entity_id\n'
+                '          AND k_rf.revision_id = e2.revision_id' .
                 format(relation_field_name)
             )
 
@@ -2762,8 +2763,8 @@ ORDER BY k_node.title, k_node.nid, e1.entity_id, v_node.title, v_node.nid
             # field join
             relation_field_join = (
                 'LEFT JOIN field_data_field_{0} AS k_rf\n'
-                'ON k_rf.entity_id = e2.entity_id\n'
-                'AND k_rf.revision_id = e2.revision_id' .
+                '          ON k_rf.entity_id = e2.entity_id\n'
+                '          AND k_rf.revision_id = e2.revision_id' .
                 format(relation_field_name)
             )
 
@@ -2839,8 +2840,8 @@ ORDER BY k_node.title, k_node.nid, e1.entity_id, v_node.title, v_node.nid
             # field join
             field_joins.append(
                 'LEFT JOIN field_data_field_{0} AS f{1}\n'
-                'ON f{1}.entity_id = e2.entity_id\n'
-                'AND f{1}.revision_id = e2.revision_id' .
+                '          ON f{1}.entity_id = e2.entity_id\n'
+                '          AND f{1}.revision_id = e2.revision_id' .
                 format(field_names[i], i)
             )
 
@@ -2849,7 +2850,7 @@ ORDER BY k_node.title, k_node.nid, e1.entity_id, v_node.title, v_node.nid
                 value_columns.append('t{0}.name'.format(i))
                 term_joins.append(
                     'LEFT JOIN taxonomy_term_data AS t{0}\n'
-                    'ON t{0}.tid = f{0}.field_{1}_tid' .
+                    '          ON t{0}.tid = f{0}.field_{1}_tid' .
                     format(i, field_names[i])
                 )
             elif field_value_types[i] == 'ip':
@@ -3019,8 +3020,8 @@ ORDER BY node1.title, node1.nid, e1.entity_id, {14}
             # field join
             field_joins.append(
                 'LEFT JOIN field_data_field_{0} AS f{1}\n'
-                'ON f{1}.entity_id = fci.item_id\n'
-                'AND f{1}.revision_id = fci.revision_id' .
+                '          ON f{1}.entity_id = fci.item_id\n'
+                '          AND f{1}.revision_id = fci.revision_id' .
                 format(field_names[i], i)
             )
 
@@ -3029,7 +3030,7 @@ ORDER BY node1.title, node1.nid, e1.entity_id, {14}
                 value_columns.append('t{0}.name'.format(i))
                 term_joins.append(
                     'LEFT JOIN taxonomy_term_data AS t{0}\n'
-                    'ON t{0}.tid = f{0}.field_{1}_tid' .
+                    '          ON t{0}.tid = f{0}.field_{1}_tid' .
                     format(i, field_names[i])
                 )
             elif field_value_types[i] == 'ip':
@@ -3224,7 +3225,7 @@ Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, key_cv, value_cv]))
         if field_value_type.startswith('term: '):
             term_join = (
                 'LEFT JOIN taxonomy_term_data AS t\n'
-                'ON t.name = %s'
+                '          ON t.name = %s'
             )
             value_column = 'f.field_{0}_tid'.format(field_name)
             value_str = 't.tid'
@@ -3307,8 +3308,8 @@ AND f.deleted = 0
             # field join
             relation_field_join = (
                 'LEFT JOIN field_data_field_{0} AS k_rf\n'
-                'ON k_rf.entity_id = e2.entity_id\n'
-                'AND k_rf.revision_id = e2.revision_id' .
+                '          ON k_rf.entity_id = e2.entity_id\n'
+                '          AND k_rf.revision_id = e2.revision_id' .
                 format(relation_field_name)
             )
 
@@ -3437,8 +3438,8 @@ AND {4} = %s
             # field join
             relation_field_join = (
                 'LEFT JOIN field_data_field_{0} AS k_rf\n'
-                'ON k_rf.entity_id = e2.entity_id\n'
-                'AND k_rf.revision_id = e2.revision_id' .
+                '          ON k_rf.entity_id = e2.entity_id\n'
+                '          AND k_rf.revision_id = e2.revision_id' .
                 format(relation_field_name)
             )
 
@@ -3492,7 +3493,7 @@ AND {4} = %s
         if field_value_type.startswith('term: '):
             term_join = (
                 'LEFT JOIN taxonomy_term_data AS t\n'
-                'ON t.name = %s'
+                '          ON t.name = %s'
             )
             value_column = 'f.field_{0}_tid'.format(field_name)
             value_str = 't.tid'
@@ -3618,7 +3619,7 @@ AND f.deleted = 0
         if field_value_type.startswith('term: '):
             term_join = (
                 'LEFT JOIN taxonomy_term_data AS t\n'
-                'ON t.name = %s'
+                '          ON t.name = %s'
             )
             value_column = 'f.field_{0}_tid'.format(field_name)
             value_str = 't.tid'
@@ -4874,8 +4875,8 @@ def get_drupal_relation_ids(db_obj, db_cur, e1_entity_type, e1_entity_id,
         # field join
         relation_field_join = (
             'LEFT JOIN field_data_field_{0} AS k_rf\n'
-            'ON k_rf.entity_id = e2.entity_id\n'
-            'AND k_rf.revision_id = e2.revision_id' .
+            '          ON k_rf.entity_id = e2.entity_id\n'
+            '          AND k_rf.revision_id = e2.revision_id' .
             format(relation_field_name)
         )
 
