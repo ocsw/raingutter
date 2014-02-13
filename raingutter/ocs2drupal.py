@@ -2,9 +2,9 @@
 
 
 """
-This is a set of templates for the raingutter database diff/sync tool.
-It is for getting data from OCS Inventory NG (*) into a Drupal inventory
-site I designed.
+This is a set of templates and functions for the raingutter database
+diff/sync tool.  It's for getting data from OCS Inventory NG (*) into a
+Drupal inventory site I designed.
 (*) http://www.ocsinventory-ng.org/en/
 
 """
@@ -14,6 +14,10 @@ site I designed.
 #                               IMPORTS
 ########################################################################
 
+#########
+# system
+#########
+
 from __future__ import division
 from __future__ import absolute_import
 from __future__ import print_function
@@ -21,11 +25,55 @@ from __future__ import print_function
 from pprint import pprint as pp  # for debugging
 
 import math
+import collections
+
+
+#########
+# add-on
+#########
+
+import nori
 
 
 ########################################################################
-#                              TEMPLATES
+#                              VARIABLES
 ########################################################################
+
+#########################
+# configuration settings
+#########################
+
+nori.core.config_settings['only_server_list'] = dict(
+    descr=(
+'''
+Limit processing to only servers in one of the inventories?
+
+Can be None (or a blank string), 'source', 'dest', or 'both'.  Values of
+'source' or 'dest' are is _before_ the 'reverse' setting is applied (i.e.,
+they match the config setting names).  A value of 'both' means to process
+only servers that are in both inventories.
+
+This setting overrides the global key_mode and key_list settings, if not
+None/blank.  The key_mode becomes 'include', and the key_list becomes the
+server list, with the following changes:
+    * if key_mode was 'include', any entries in the existing key_list that
+      aren't in the server list are appended to the server list
+    * if key_mode was 'exclude', the existing key_list is subtracted from
+      the server list
+
+Note that if key_mode was 'exclude', this setting will change how conflicts
+between the global and per-template key_mode/key_list settings work; see
+those settings for more information.
+'''
+    ),
+    default=None,
+    cl_coercer=str,
+)
+
+
+############
+# templates
+############
 
 templates = []
 
@@ -664,3 +712,153 @@ AND ({0})""".format(namelist_str)
         ],
     )),
 ))
+
+
+########################################################################
+#                              FUNCTIONS
+########################################################################
+
+def validate_config():
+    """
+    Validate config settings.
+    Immediately added to the necessary hook after being defined.
+    Dependencies:
+        modules: nori
+    """
+    if nori.setting_check_type(
+             'only_server_list', nori.core.STRING_TYPES +
+                                 (nori.core.NONE_TYPE, )
+          ) is not nori.core.NONE_TYPE:
+        nori.setting_check_list('only_server_list', ['', 'source', 'dest',
+                                                     'both'])
+
+nori.core.validate_config_hooks.append(validate_config)
+
+
+def process_config_hook():
+    """
+    Do last-minute initializations based on config settings.
+    Immediately added to the necessary hook after being defined.
+    Dependencies:
+        modules: nori
+    """
+    if nori.core.cfg['only_server_list']:
+        nori.core.cfg['pre_action_callbacks'].append(
+            (only_server_list, [],
+             dict(which_db=nori.core.cfg['only_server_list']))
+        )
+
+nori.core.process_config_hooks.append(process_config_hook)
+
+
+def get_server_list(db_obj, db_cur, db_type):
+
+    """
+    Get the list of servers from one of the inventory DBs.
+
+    Returns None on error, otherwise a list of strings.
+
+    Parameters:
+        db_obj: the database connection object to use
+        db_cur: the database cursor object to use
+        db_type: 'generic' (OCS) or 'drupal'
+
+    """
+
+    # query string
+    if db_type == 'generic':  # OCS
+        query_str = (
+'''
+SELECT TAG
+FROM accountinfo
+ORDER BY TAG
+'''
+        )
+    else:  # Drupal
+        query_str = (
+'''
+SELECT title
+FROM node
+WHERE type = 'server'
+ORDER BY title
+'''
+        )
+
+    # execute the query
+    if not db_obj.execute(db_cur, query_str.strip(), has_results=True):
+        return None
+    ret = db_obj.fetchall(db_cur)
+    if not ret[0]:
+        return None
+
+    return [x[0] for x in ret[1]]
+
+
+def only_server_list(s_db, s_cur, d_db, d_cur, which_db='source'):
+
+    """
+    Limit processing to the list of servers in one of the inventories.
+
+    Parameters:
+        which_db: which database to get the list from ('source' or
+                  'dest'); this value is _before_ the 'reverse' setting
+                  is applied (i.e., it matches the config setting names)
+        see the pre_action_callbacks setting for the rest
+
+    Dependencies:
+        modules: collections, nori
+
+    """
+
+    # choose DB
+    if which_db == 'source':
+        server_list = get_server_list(s_db, s_cur,
+                                      nori.core.cfg['source_type'])
+        check_tuples = [(server_list, 'source')]
+    elif which_db == 'dest':
+        server_list = get_server_list(d_db, d_cur,
+                                      nori.core.cfg['dest_type'])
+        check_tuples = [(server_list, 'destination')]
+    else:  # 'both'
+        server_list_s = get_server_list(s_db, s_cur,
+                                        nori.core.cfg['source_type'])
+        server_list_d = get_server_list(d_db, d_cur,
+                                        nori.core.cfg['dest_type'])
+        check_tuples = [(server_list_s, 'source'),
+                        (server_list_d, 'destination')]
+
+    # handle errors
+    for (list_to_check, err_db) in check_tuples:
+        if list_to_check is None:
+            nori.core.email_logger.error(
+                'Error: could not get the list of servers from the {0} '
+                'database;\nnot going to process anything.'.format(err_db)
+            )
+            nori.core.cfg['key_mode'] = 'include'
+            nori.core.cfg['key_list'] = []
+            return False
+
+    # handle 'both' case
+    if which_db == 'both':
+        server_dict = collections.OrderedDict()
+        for server in server_list_s + server_list_d:
+            if server not in server_dict:
+                server_dict[server] = 1
+            else:
+                server_dict[server] += 1
+        server_list = []
+        for server, count in server_dict.items():
+            if count == 2:
+                server_list.append(server)
+
+    # adjust key_mode and key_list
+    if nori.core.cfg['key_mode'] == 'include':
+        server_list += [x for x in nori.core.cfg['key_list']
+                          if x not in server_list]
+    elif nori.core.cfg['key_mode'] == 'exclude':
+        server_list = [x for x in server_list
+                         if x not in nori.core.cfg['key_list']]
+    nori.core.cfg['key_mode'] = 'include'
+    nori.core.cfg['key_list'] = server_list
+
+    return True
