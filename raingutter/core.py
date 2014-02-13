@@ -2073,8 +2073,8 @@ Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, tables, key_cv, value_cv,
         sys.exit(nori.core.exitvals['internal']['num'])
 
     # assemble the query string and argument list
-    query_args = []
-    query_str = 'INSERT INTO '
+#    query_args = []
+#    query_str = 'INSERT INTO '
 #    if isinstance(tables, nori.core.MAIN_SEQUENCE_TYPES):
 #        query_str += ', '.join(tables)
 #    else:
@@ -3909,12 +3909,6 @@ Skipping insert.''' .
         node1_type = node1_ident[1]
         node1_id_type = node1_ident[2]
 
-        # handle node1 ID types
-        if node1_id_type == 'id':
-            key_column_1 = 'node1.nid'
-        elif node1_id_type == 'title':
-            key_column_1 = 'node1.title'
-
         # relation details
         relation_cv = key_cv[1]
         relation_ident = relation_cv[0]
@@ -3931,12 +3925,6 @@ Skipping insert.''' .
         node2_value = node2_cv[2]
         node2_type = node2_ident[1]
         node2_id_type = node2_ident[2]
-
-        # handle node2 ID types
-        if node2_id_type == 'id':
-            key_column_2 = 'node2.nid'
-        elif node2_id_type == 'title':
-            key_column_2 = 'node2.title'
 
         # field details
         field_cv = value_cv[0]
