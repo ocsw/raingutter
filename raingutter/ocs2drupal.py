@@ -841,14 +841,17 @@ def only_server_list(s_db, s_cur, d_db, d_cur, which_db='source'):
     # handle 'both' case
     if which_db == 'both':
         server_dict = collections.OrderedDict()
-        for server in server_list_s + server_list_d:
+        for server in server_list_s:
             if server not in server_dict:
-                server_dict[server] = 1
-            else:
-                server_dict[server] += 1
+                server_dict[server] = [0, 0]
+            server_dict[server][0] += 1
+        for server in server_list_d:
+            if server not in server_dict:
+                server_dict[server] = [0, 0]
+            server_dict[server][1] += 1
         server_list = []
-        for server, count in server_dict.items():
-            if count == 2:
+        for server, counts in server_dict.items():
+            if counts[0] and counts[1]:
                 server_list.append(server)
 
     # adjust key_mode and key_list
