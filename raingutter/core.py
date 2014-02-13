@@ -146,11 +146,15 @@ d_drupal_readonly = None
 #       lists of tuples in the format (exists_in_source, source_row,
 #       exists_in_dest, dest_row, has_been_changed)
 # depending on the report_order config setting.
-# The exists_in_source / exists in dest elements are booleans, but can
-# also be None in the case of a multiple-valued template with rows that
-# don't even have key matches (see the templates setting, below).
+# The exists_in_source / exists in dest elements are augmented booleans:
+#     for single-valued templates, True if the relevant key exists in
+#     the database, otherwise False; for multiple-valued templates,
+#     False if the relevant key doesn't exist, or None if the key exists
+#     but the value doesn't
+# (see the templates setting, below).
 # The has_been_changed element can be True (fully changed), False
 # (partly changed), or None (unchanged).
+# See the diff functions, below.
 diff_dict = collections.OrderedDict()
 
 
@@ -6746,30 +6750,45 @@ def key_value_copy(source_data, dest_data, dest_key_cv, dest_value_cv):
 
 def log_diff(template_index, exists_in_source, source_row, exists_in_dest,
              dest_row):
+
     """
     Record a difference between the two databases.
+
     Note that 'source' and 'dest' refer to the actual source and
     destination databases, after applying the value of the 'reverse'
     setting.
+
     Returns a tuple: (the key used in diff_dict, the index added to
                       the list).
+
     Parameters:
         template_index: the index of the relevant template in the
                         templates setting
-        exists_in_source: True if the relevant key exists in the source
-                          database, otherwise False
+        exists_in_source: for single-valued templates, True if the
+                          relevant key exists in the source database,
+                          otherwise False; for multiple-valued
+                          templates, False if the relevant key doesn't
+                          exist, or None if the key exists but the value
+                          doesn't
         source_row: a tuple of (number of key columns, transformed
                     results tuple from the source DB's query function)
-        exists_in_dest: True if the relevant key exists in the
-                        destination database, otherwise False
+        exists_in_dest: for single-valued templates, True if the
+                        relevant key exists in the destination database,
+                        otherwise False; for multiple-valued templates,
+                        False if the relevant key doesn't exist, or None
+                        if the key exists but the value doesn't
         dest_row: a tuple of (number of key columns, transformed results
                   tuple from the destination DB's query function)
+
     Dependencies:
         config settings: templates, report_order
         globals: diff_dict, T_NAME_KEY
         modules: nori
+
     """
+
     template = nori.core.cfg['templates'][template_index]
+
     if nori.core.cfg['report_order'] == 'template':
         if template_index not in diff_dict:
             diff_dict[template_index] = []
@@ -6794,16 +6813,24 @@ def log_diff(template_index, exists_in_source, source_row, exists_in_dest,
                                       None))
         diff_k = keys_tuple
         diff_i = len(diff_dict[keys_tuple]) - 1
+
+    if exists_in_source:
+        source_str = nori.pps(source_row[1])
+    elif exists_in_source is None:
+        source_str = '[no value match in source database]'
+    else:
+        source_str = '[no key match in source database]'
+    if exists_in_dest:
+        dest_str = nori.pps(dest_row[1])
+    elif exists_in_dest is None:
+        dest_str = '[no value match in destination database]'
+    else:
+        dest_str = '[no key match in destination database]'
+
     nori.core.status_logger.info(
         'Diff found for template {0} ({1}):\nS: {2}\nD: {3}' .
-        format(template_index,
-               nori.pps(template[T_NAME_KEY]),
-               nori.pps(source_row[1])
-                   if exists_in_source
-                   else '[no match in source database]',
-               nori.pps(dest_row[1])
-                   if exists_in_dest
-                   else '[no match in destination database]')
+        format(template_index, nori.pps(template[T_NAME_KEY]),
+               source_str, dest_str)
     )
     return (diff_k, diff_i)
 
@@ -6863,15 +6890,15 @@ def render_diff_report():
                 if exists_in_source:
                     source_str = nori.pps(source_row[1])
                 elif exists_in_source is None:
-                    source_str = '[no key match in source database]'
+                    source_str = '[no value match in source database]'
                 else:
-                    source_str = '[no match in source database]'
+                    source_str = '[no key match in source database]'
                 if exists_in_dest:
                     dest_str = nori.pps(dest_row[1])
                 elif exists_in_dest is None:
-                    dest_str = '[no key match in destination database]'
+                    dest_str = '[no value match in destination database]'
                 else:
-                    dest_str = '[no match in destination database]'
+                    dest_str = '[no key match in destination database]'
                 if has_been_changed is None:
                     changed_str = 'unchanged'
                 elif not has_been_changed:
@@ -6904,17 +6931,17 @@ def render_diff_report():
                     source_data = source_row[1]
                     source_str = nori.pps(source_data[num_keys:])
                 elif exists_in_source is None:
-                    source_str = '[no key match in source database]'
+                    source_str = '[no value match in source database]'
                 else:
-                    source_str = '[no match in source database]'
+                    source_str = '[no key match in source database]'
                 if exists_in_dest:
                     num_keys = dest_row[0]
                     dest_data = dest_row[1]
                     dest_str = nori.pps(dest_data[num_keys:])
                 elif exists_in_dest is None:
-                    dest_str = '[no key match in destination database]'
+                    dest_str = '[no value match in destination database]'
                 else:
-                    dest_str = '[no match in destination database]'
+                    dest_str = '[no key match in destination database]'
                 if has_been_changed is None:
                     changed_str = 'unchanged'
                 elif not has_been_changed:
