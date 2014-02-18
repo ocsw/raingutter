@@ -25,6 +25,7 @@ setup(
     entry_points = {
         'console_scripts': [
             'raingutter = raingutter:main',
+            'ocs2drupal = raingutter.ocs2drupal:main',
         ],
         #'gui_scripts': [
         #]
