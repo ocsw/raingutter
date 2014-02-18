@@ -1702,7 +1702,7 @@ class SMTPReportHandler(logging.handlers.SMTPHandler):
 def init_reporting():
     """
     Dependencies:
-        config settings: send_report_emails, report_emails_host,
+        config settings: debug, send_report_emails, report_emails_host,
                          report_emails_from, report_emails_to,
                          report_emails_subject, report_emails_cred,
                          report_emails_sec
@@ -1713,6 +1713,10 @@ def init_reporting():
     global email_reporter
     if nori.core.cfg['send_report_emails']:
         email_reporter = logging.getLogger(__name__ + '.reportemail')
+        if nori.core.cfg['debug']:
+            email_reporter.setLevel(logging.DEBUG)
+        else:
+            email_reporter.setLevel(logging.INFO)
         email_reporter.propagate = False
         email_handler = SMTPReportHandler(
             nori.core.cfg['report_emails_host'],
@@ -6960,7 +6964,7 @@ def do_diff_report():
     """
     diff_report = render_diff_report()
     if email_reporter:
-        email_reporter.error(diff_report + '\n\n\n' + ('#' * 76))
+        email_reporter.info(diff_report + '\n\n\n' + ('#' * 76))
     # use the output logger for the report files (for now)
     nori.core.output_logger.info('\n\n' + diff_report + '\n\n')
 
