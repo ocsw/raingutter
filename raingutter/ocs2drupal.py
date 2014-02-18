@@ -24,6 +24,7 @@ from __future__ import print_function
 
 from pprint import pprint as pp  # for debugging
 
+import sys
 import math
 import collections
 
@@ -35,9 +36,31 @@ import collections
 import nori
 
 
+###############
+# this package
+###############
+from . import core
+
+
 ########################################################################
 #                              VARIABLES
 ########################################################################
+
+##################
+# status and meta
+##################
+
+nori.core.script_modes['servdiff'] = dict(
+    descr=(
+'''
+'servdiff': print a diff of the server lists from the source and destination
+databases, as well as lists of duplicates within each database
+'''
+    ),
+    callback=lambda: server_list_diff(),
+    req_config=True,
+)
+
 
 #########################
 # configuration settings
@@ -883,3 +906,151 @@ def only_server_list(s_db, s_cur, d_db, d_cur, which_db='source'):
     nori.core.cfg['key_list'] = server_list
 
     return True
+
+
+def server_list_diff():
+
+    """
+    Script mode to generate diffs of server lists between inventories.
+
+    Also looks for duplicate entries within each inventory.
+
+    Dependencies:
+        config settings: source_type, dest_type
+        functions: get_server_list()
+        modules: sys, collections, nori, core
+
+    """
+
+    # this is intended to be run from the command line;
+    # we don't really need to log the SSH tunnel output, and we don't
+    # want to purge existing output logs, but we do need to initialize
+    # the logging objects
+    # (turning off status logging and whatnot would be reasonable, but
+    # isn't possible because they are initialized before we get here)
+    nori.core.cfg['output_log'] = None
+    nori.init_logging_output()
+
+    # connect to DBs
+    sourcedb = core.sourcedb
+    sourcedb.connect()
+    sourcedb.autocommit(True)
+    sourcecur = sourcedb.cursor(False)
+    destdb = core.destdb
+    destdb.connect()
+    destdb.autocommit(True)
+    destcur = destdb.cursor(False)
+
+    # get lists
+    server_list_s = get_server_list(sourcedb, sourcecur,
+                                    nori.core.cfg['source_type'])
+    server_list_d = get_server_list(destdb, destcur,
+                                    nori.core.cfg['dest_type'])
+    check_tuples = [(server_list_s, 'source'),
+                    (server_list_d, 'destination')]
+
+    # handle errors
+    for (list_to_check, err_db) in check_tuples:
+        if list_to_check is None:
+            nori.core.email_logger.error(
+                'Error: could not get the list of servers from the {0} '
+                'database; exiting.'.format(err_db)
+            )
+            sys.exit(nori.core.exitvals['dbms_execute']['num'])
+
+    # compile a dict
+    server_dict = collections.OrderedDict()
+    for server in server_list_s:
+        if server not in server_dict:
+            server_dict[server] = [0, 0]
+        server_dict[server][0] += 1
+    for server in server_list_d:
+        if server not in server_dict:
+            server_dict[server] = [0, 0]
+        server_dict[server][1] += 1
+
+    # find unmatched servers
+    found_source_only = False
+    found_dest_only = False
+    server_diffs = (
+        'Only in the source database:\n'
+        '----------------------------\n'
+        '\n'
+    )
+    for server, counts in server_dict.items():
+        if not counts[1]:
+            found_source_only = True
+            server_diffs += server + '\n'
+    if not found_source_only:
+        server_diffs += '[none]\n'
+    server_diffs += (
+        '\n'
+        '\n'
+        'Only in the destination database:\n'
+        '---------------------------------\n'
+        '\n'
+    )
+    for server, counts in server_dict.items():
+        if not counts[0]:
+            found_dest_only = True
+            server_diffs += server + '\n'
+    if not found_dest_only:
+        server_diffs += '[none]\n'
+
+    # find duplicate servers
+    found_source_dupl = False
+    found_dest_dupl = False
+    server_diffs += (
+        '\n'
+        '\n'
+        'Duplicates in the source database:\n'
+        '----------------------------------\n'
+        '\n'
+    )
+    for server, counts in server_dict.items():
+        if counts[0] > 1:
+            found_source_dupl = True
+            server_diffs += '{0} ({1})\n'.format(server, counts[0])
+    if not found_source_dupl:
+        server_diffs += '[none]\n'
+    server_diffs += (
+        '\n'
+        '\n'
+        'Duplicates in the destination database:\n'
+        '---------------------------------------\n'
+        '\n'
+    )
+    for server, counts in server_dict.items():
+        if counts[1] > 1:
+            found_dest_dupl = True
+            server_diffs += '{0} ({1})\n'.format(server, counts[1])
+    if not found_dest_dupl:
+        server_diffs += '[none]\n'
+
+    # email and print the report
+    server_diffs = server_diffs.strip()
+    if core.email_reporter:
+        core.email_reporter.info(server_diffs + '\n\n\n' + ('#' * 76))
+    # use the output logger for the report files (for now)
+    nori.core.output_logger.info('\n\n' + server_diffs + '\n\n')
+
+    # close DB connections
+    destdb.close_cursor(destcur)
+    destdb.close()
+    sourcedb.close_cursor(sourcecur)
+    sourcedb.close()
+
+
+########################################################################
+#                           RUN STANDALONE
+########################################################################
+
+def main():
+    nori.core.apply_config_defaults_hooks.append(core.apply_config_defaults)
+    nori.core.validate_config_hooks.append(core.validate_config)
+    nori.core.process_config_hooks.append(core.init_reporting)
+    nori.core.run_mode_hooks.append(core.run_mode_hook)
+    nori.process_command_line()
+
+if __name__ == '__main__':
+    main()
