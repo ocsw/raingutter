@@ -723,6 +723,7 @@ def validate_config():
     Validate config settings.
     Immediately added to the necessary hook after being defined.
     Dependencies:
+        config settings: only_server_list
         modules: nori
     """
     if nori.setting_check_type(
@@ -740,6 +741,8 @@ def process_config_hook():
     Do last-minute initializations based on config settings.
     Immediately added to the necessary hook after being defined.
     Dependencies:
+        config_settings: only_server_list, pre_action_callbacks
+        functions: only_server_list()
         modules: nori
     """
     if nori.core.cfg['only_server_list']:
@@ -806,23 +809,38 @@ def only_server_list(s_db, s_cur, d_db, d_cur, which_db='source'):
         see the pre_action_callbacks setting for the rest
 
     Dependencies:
+        config settings: reverse, source_type, dest_type, key_mode,
+                         key_list
+        functions: get_server_list()
         modules: collections, nori
 
     """
 
+    # un-reverse source and dest
+    if nori.core.cfg['reverse']:
+        real_s_db = d_db
+        real_s_cur = d_cur
+        real_d_db = s_db
+        real_d_cur = s_cur
+    else:
+        real_s_db = s_db
+        real_s_cur = s_cur
+        real_d_db = d_db
+        real_d_cur = d_cur
+
     # choose DB
     if which_db == 'source':
-        server_list = get_server_list(s_db, s_cur,
+        server_list = get_server_list(real_s_db, real_s_cur,
                                       nori.core.cfg['source_type'])
         check_tuples = [(server_list, 'source')]
     elif which_db == 'dest':
-        server_list = get_server_list(d_db, d_cur,
+        server_list = get_server_list(real_d_db, real_d_cur,
                                       nori.core.cfg['dest_type'])
         check_tuples = [(server_list, 'destination')]
     else:  # 'both'
-        server_list_s = get_server_list(s_db, s_cur,
+        server_list_s = get_server_list(real_s_db, real_s_cur,
                                         nori.core.cfg['source_type'])
-        server_list_d = get_server_list(d_db, d_cur,
+        server_list_d = get_server_list(real_d_db, real_d_cur,
                                         nori.core.cfg['dest_type'])
         check_tuples = [(server_list_s, 'source'),
                         (server_list_d, 'destination')]
