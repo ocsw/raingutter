@@ -6,8 +6,6 @@ OCS:
 
 testing
 
-node status
-
 timestamp updates for deletes - skip errs
 
 only_server_list setting - place in list
@@ -57,6 +55,8 @@ global/template u/i/d settings?
 node -> title, fc -> label, etc. (?) (and autolabels in config)
 
 add revisions on updates (option)?
+
+option to limit to node status = 1?
 
 user ID option?
 
