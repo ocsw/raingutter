@@ -4583,7 +4583,8 @@ Skipping delete.''' .
                                    field_cv)
 
 
-def drupal_db_update_timestamps(db_obj, db_cur, key_cv, value_cv):
+def drupal_db_update_timestamps(db_obj, db_cur, mode, scope, key_cv,
+                                value_cv):
 
     """
     Update Drupal timestamps; use after updates, inserts, or deletes.
@@ -4653,7 +4654,7 @@ Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, key_cv, value_cv]))
                                                 v_ret[1]):
                 return False
 
-        if k_ret and v_ret:
+        if k_ret and v_ret and mode != 'delete':
             relation_cv = key_cv[1]
             r_ret = get_drupal_relation_ids_timestamp(
                 db_obj, db_cur, 'node', k_ret[0], relation_cv, 'node',
@@ -4684,7 +4685,7 @@ Exiting.'''.format(*map(nori.pps, [db_obj, db_cur, key_cv, value_cv]))
                                                 ret2[1]):
                 return False
 
-        if ret1 and ret2:
+        if ret1 and ret2 and (mode != 'delete' or scope != 'k'):
             relation_cv = key_cv[1]
             r_ret = get_drupal_relation_ids_timestamp(
                 db_obj, db_cur, 'node', ret1[0], relation_cv, 'node',
@@ -4723,7 +4724,7 @@ def drupal_timestamp_callback(t_index, mode, scope, s_row, d_row,
     Dependencies:
         functions: drupal_db_update_timestamps()
     """
-    return drupal_db_update_timestamps(d_db, d_cur, new_key_cv,
+    return drupal_db_update_timestamps(d_db, d_cur, mode, scope, new_key_cv,
                                        new_value_cv)
 
 
