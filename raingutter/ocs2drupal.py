@@ -66,8 +66,8 @@ databases, as well as lists of duplicates within each database
 # configuration settings
 #########################
 
-nori.core.config_settings['only_server_list'] = dict(
-    descr=(
+nori.core.config_settings.insert_after('key_list', 'only_server_list', dict(
+        descr=(
 '''
 Limit processing to only servers in one of the inventories?
 
@@ -88,9 +88,10 @@ Note that if key_mode was 'exclude', this setting will change how conflicts
 between the global and per-template key_mode/key_list settings work; see
 those settings for more information.
 '''
-    ),
-    default=None,
-    cl_coercer=str,
+        ),
+        default=None,
+        cl_coercer=str,
+    )
 )
 
 

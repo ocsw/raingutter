@@ -8,8 +8,6 @@ testing
 
 timestamp updates for deletes - skip errs
 
-only_server_list setting - place in list
-
 ---
 
 OCS:
