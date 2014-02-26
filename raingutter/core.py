@@ -928,114 +928,11 @@ database keys ('keys')?
     cl_coercer=str,
 )
 
-nori.core.config_settings['send_report_emails'] = dict(
-    descr=(
+nori.create_email_settings('report', 'report')
+nori.core.config_settings['send_report_emails']['descr'] = (
 '''
 Send reports on diffs / syncs by email?  (True/False)
 '''
-    ),
-    default=True,
-    cl_coercer=nori.str_to_bool,
-)
-
-nori.core.config_settings['report_emails_from'] = dict(
-    descr=(
-'''
-Address to send report emails from.
-
-Ignored if send_report_emails is False.
-'''
-    ),
-    default=nori.core.running_as_email,
-    default_descr=(
-'''
-the local email address of the user running the script
-(i.e., [user]@[hostname], where [user] is the current user and [hostname]
-is the local hostname)
-'''
-    ),
-    cl_coercer=str,
-)
-
-nori.core.config_settings['report_emails_to'] = dict(
-    descr=(
-'''
-Where to send report emails.
-
-This must be a list of strings (even if there is only one address).
-
-Ignored if send_report_emails is False.
-'''
-    ),
-    default=[nori.core.running_as_email],
-    default_descr=(
-'''
-a list containing the local email address of the user running
-the script (i.e., [user]@[hostname], where [user] is the current user
-and [hostname] is the local hostname)
-'''
-    ),
-    cl_coercer=lambda x: x.split(','),
-)
-
-nori.core.config_settings['report_emails_subject'] = dict(
-    descr=(
-'''
-The subject line of the report emails.
-
-Ignored if send_report_emails is False.
-'''
-    ),
-    default=(nori.core.script_shortname + ' report on ' + socket.getfqdn()),
-    default_descr=(
-'''
-'{0} report on [hostname]', where [hostname] is the local
-hostname
-'''.format(nori.core.script_shortname)
-    ),
-    cl_coercer=str,
-)
-
-nori.core.config_settings['report_emails_host'] = dict(
-    descr=(
-'''
-The SMTP server via which report emails will be sent.
-
-This can be a string containing the hostname, or a tuple of the
-hostname and the port number.
-
-Ignored if send_report_emails is False.
-'''
-    ),
-    default='localhost',
-)
-
-nori.core.config_settings['report_emails_cred'] = dict(
-    descr=(
-'''
-The credentials to be used with the report_emails_host.
-
-This can be None or a tuple containing the username and password.
-
-Ignored if send_report_emails is False.
-'''
-    ),
-    default=None,
-)
-
-nori.core.config_settings['report_emails_sec'] = dict(
-    descr=(
-'''
-The SSL/TLS options to be used with the report_emails_host.
-
-This can be None, () for plain SSL/TLS, a tuple containing only
-the path to a key file, or a tuple containing the paths to the key
-and certificate files.
-
-Ignored if send_report_emails is False.
-'''
-    ),
-    default=None,
 )
 
 
