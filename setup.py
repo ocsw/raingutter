@@ -20,7 +20,7 @@ setup(
     packages=['raingutter'],
     #package_dir={},
     #py_modules=[],
-    install_requires=['phpserialize'],
+    install_requires=['nori', 'phpserialize'],
     #extras_require={},
     entry_points = {
         'console_scripts': [

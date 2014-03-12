@@ -19,6 +19,8 @@ DOCSTRING CONTENTS:
     The script requires Python 2.7/3.2, and will exit (with an error
     message) if this requirement is not met.
 
+    The nori module (by the same author) must be in the module search path.
+
     For Drupal databases, the phpserialize module is also required.
 
 
