@@ -689,7 +689,7 @@ This must be a sequence of dicts; the dicts must have these elements:
         don't replicate source-DB changes? [boolean; default: False]
 
     {5}:
-        source-DB change callback function [sequence of tuples:
+        source-DB change callback functions [sequence of tuples:
         [(function, *args, **kwargs)]; default: []]
 
     {6}:
@@ -702,7 +702,7 @@ This must be a sequence of dicts; the dicts must have these elements:
         don't replicate dest-DB changes? [boolean; default: False]
 
     {9}:
-        dest-DB change callback function [sequence of tuples:
+        dest-DB change callback functions [sequence of tuples:
         [(function, *args, **kwargs)]; default: []]
 
     {10}:
