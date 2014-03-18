@@ -1433,10 +1433,7 @@ def validate_config():
                          dest_template_change_callbacks,
                          dest_global_change_callbacks, templates,
                          template_mode, template_list, key_mode,
-                         key_list, report_order, send_report_emails,
-                         report_emails_from, report_emails_to,
-                         report_emails_subject, report_emails_host,
-                         report_emails_cred, report_emails_sec
+                         key_list, report_order
         globals: T_*
         modules: nori
 
@@ -1540,33 +1537,7 @@ def validate_config():
 
     # reporting settings
     nori.setting_check_list('report_order', ['template', 'keys'])
-    nori.setting_check_type('send_report_emails', bool)
-    if nori.core.cfg['send_report_emails']:
-        nori.setting_check_not_blank('report_emails_from')
-        nori.setting_check_type('report_emails_to', list)
-        nori.setting_check_not_empty('report_emails_to', types=list)
-        nori.setting_check_no_blanks('report_emails_to')
-        nori.setting_check_type('report_emails_subject',
-                                nori.core.STRING_TYPES)
-        if nori.setting_check_type(
-               'report_emails_host', nori.core.STRING_TYPES + (tuple, )
-              ) == tuple:
-            nori.setting_check_length('report_emails_host', 2, 2)
-            nori.setting_check_not_blank(('report_emails_host', 0))
-            nori.setting_check_integer(('report_emails_host', 1), 1, 65535)
-        else:
-            nori.setting_check_not_blank('report_emails_host')
-        if nori.setting_check_type(
-               'report_emails_cred', (nori.core.NONE_TYPE, tuple)
-              ) is not nori.core.NONE_TYPE:
-            nori.setting_check_length('report_emails_cred', 2, 2)
-            nori.setting_check_no_blanks('report_emails_cred')
-        if nori.setting_check_type(
-               'report_emails_sec', (nori.core.NONE_TYPE, tuple)
-              ) is not nori.core.NONE_TYPE:
-            nori.setting_check_length('report_emails_sec', 0, 2)
-            for i, f in enumerate(nori.core.cfg['report_emails_sec']):
-                nori.setting_check_file_read(('report_emails_sec', i))
+    # the rest are handled by nori.validate_email_config()
 
 
 #####################
