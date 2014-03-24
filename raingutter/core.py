@@ -1087,7 +1087,7 @@ def apply_config_defaults():
     if 'templates' not in nori.core.cfg:
         return
     if not isinstance(nori.core.cfg['templates'],
-                      nori.core.CONTAINER_TYPES):
+                      nori.core.MAIN_SEQUENCE_TYPES):
         return
 
     for i, template in enumerate(nori.core.cfg['templates']):

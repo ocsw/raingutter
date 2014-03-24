@@ -930,7 +930,7 @@ def server_list_diff():
     # (turning off status logging and whatnot would be reasonable, but
     # isn't possible because they are initialized before we get here)
     nori.core.cfg['output_log'] = None
-    nori.init_logging_output()
+    nori.logging_init_output()
 
     # connect to DBs
     sourcedb = core.sourcedb
