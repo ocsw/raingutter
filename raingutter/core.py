@@ -925,7 +925,7 @@ database keys ('keys')?
     cl_coercer=str,
 )
 
-nori.create_email_settings('report', 'report', notify_logger='status')
+nori.create_email_settings('report', 'report')
 nori.core.config_settings['send_report_emails']['descr'] = (
 '''
 Send reports on diffs / syncs by email?  (True/False)
