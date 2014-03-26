@@ -165,9 +165,6 @@ diff_dict = collections.OrderedDict()
 sourcedb = nori.MySQL('sourcedb')
 destdb = nori.MySQL('destdb')
 
-# see init_reporting()
-email_reporter = None
-
 
 #########################
 # configuration settings
@@ -928,7 +925,7 @@ database keys ('keys')?
     cl_coercer=str,
 )
 
-nori.create_email_settings('report', 'report')
+nori.create_email_settings('report', 'report', notify_logger='status')
 nori.core.config_settings['send_report_emails']['descr'] = (
 '''
 Send reports on diffs / syncs by email?  (True/False)
@@ -1538,64 +1535,6 @@ def validate_config():
     # reporting settings
     nori.setting_check_list('report_order', ['template', 'keys'])
     # the rest are handled by nori.validate_email_config()
-
-
-#####################
-# logging and output
-#####################
-
-class SMTPReportHandler(logging.handlers.SMTPHandler):
-
-    """Override SMTPHandler to add diagnostics to the email."""
-
-    def emit(self, record):
-        """
-        Add diagnostics to the message, and log that an email was sent.
-        Dependencies:
-            config settings: report_emails_to
-            modules: copy, nori
-        """
-        # use a copy so parent loggers won't see the changed message
-        r = copy.copy(record)
-        if r.msg[-1] != '\n':
-            r.msg += '\n'
-        r.msg += nori.email_diagnostics()
-        super(SMTPReportHandler, self).emit(r)
-        nori.core.status_logger.info(
-            'Report email sent to {0}.' .
-            format(nori.core.cfg['report_emails_to'])
-        )
-
-
-def init_reporting():
-    """
-    Dependencies:
-        config settings: debug, send_report_emails, report_emails_host,
-                         report_emails_from, report_emails_to,
-                         report_emails_subject, report_emails_cred,
-                         report_emails_sec
-        globals: email_reporter
-        classes: SMTPReportHandler
-        modules: logging, nori
-    """
-    global email_reporter
-    if nori.core.cfg['send_report_emails']:
-        email_reporter = logging.getLogger(__name__ + '.reportemail')
-        if nori.core.cfg['debug']:
-            email_reporter.setLevel(logging.DEBUG)
-        else:
-            email_reporter.setLevel(logging.INFO)
-        email_reporter.propagate = False
-        email_handler = SMTPReportHandler(
-            nori.core.cfg['report_emails_host'],
-            nori.core.cfg['report_emails_from'],
-            nori.core.cfg['report_emails_to'],
-            nori.core.cfg['report_emails_subject'],
-            nori.core.cfg['report_emails_cred'],
-            nori.core.cfg['report_emails_sec']
-        )
-        email_reporter.addHandler(email_handler)
-    # use the output logger for the report files (for now)
 
 
 ###########################
@@ -6828,12 +6767,13 @@ def do_diff_report():
     """
     Email and log a summary of the diffs found and/or changed.
     Dependencies:
-        globals: email_reporter
         functions: render_diff_report()
+        modules: nori
     """
     diff_report = render_diff_report()
-    if email_reporter:
-        email_reporter.info(diff_report + '\n\n\n' + ('#' * 76))
+    nori.core.email_loggers['report'].info(
+        diff_report + '\n\n\n' + ('#' * 76)
+    )
     # use the output logger for the report files (for now)
     nori.core.output_logger.info('\n\n' + diff_report + '\n\n')
 
@@ -7363,7 +7303,6 @@ def run_mode_hook():
 def main():
     nori.core.apply_config_defaults_hooks.append(apply_config_defaults)
     nori.core.validate_config_hooks.append(validate_config)
-    nori.core.process_config_hooks.append(init_reporting)
     nori.core.run_mode_hooks.append(run_mode_hook)
     nori.process_command_line()
 

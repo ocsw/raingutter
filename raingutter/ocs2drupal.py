@@ -1030,8 +1030,9 @@ def server_list_diff():
 
     # email and print the report
     server_diffs = server_diffs.strip()
-    if core.email_reporter:
-        core.email_reporter.info(server_diffs + '\n\n\n' + ('#' * 76))
+    nori.core.email_loggers['report'].info(
+        server_diffs + '\n\n\n' + ('#' * 76)
+    )
     # use the output logger for the report files (for now)
     nori.core.output_logger.info('\n\n' + server_diffs + '\n\n')
 
@@ -1049,7 +1050,6 @@ def server_list_diff():
 def main():
     nori.core.apply_config_defaults_hooks.append(core.apply_config_defaults)
     nori.core.validate_config_hooks.append(core.validate_config)
-    nori.core.process_config_hooks.append(core.init_reporting)
     nori.core.run_mode_hooks.append(core.run_mode_hook)
     nori.process_command_line()
 
