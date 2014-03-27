@@ -1098,7 +1098,7 @@ def apply_config_defaults():
         if T_S_QUERY_ARGS_KEY in template:
             args_t = template[T_S_QUERY_ARGS_KEY]
             defaulter = nori.core.cfg['source_query_defaulter']
-            if (isinstance(args_t, tuple) and len(args_t) >=2 and
+            if (isinstance(args_t, tuple) and len(args_t) >= 2 and
                   isinstance(args_t[0], nori.core.MAIN_SEQUENCE_TYPES) and
                   isinstance(args_t[1], nori.core.MAPPING_TYPES) and
                   defaulter and callable(defaulter)):
@@ -1116,7 +1116,7 @@ def apply_config_defaults():
         if T_D_QUERY_ARGS_KEY in template:
             args_t = template[T_D_QUERY_ARGS_KEY]
             defaulter = nori.core.cfg['dest_query_defaulter']
-            if (isinstance(args_t, tuple) and len(args_t) >=2 and
+            if (isinstance(args_t, tuple) and len(args_t) >= 2 and
                   isinstance(args_t[0], nori.core.MAIN_SEQUENCE_TYPES) and
                   isinstance(args_t[1], nori.core.MAPPING_TYPES) and
                   defaulter and callable(defaulter)):
@@ -6286,7 +6286,7 @@ WHERE name='site_readonly'
         query_args = ['i:1;' if what else 'i:0;']
         if not db_obj.execute(db_cur, query_str.strip(), query_args,
                               has_results=False):
-            return False;
+            return False
 
         query_str = (
 '''
