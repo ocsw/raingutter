@@ -34,8 +34,8 @@ setup(
     # PyPI metadata
     description='A diff/sync tool for MySQL databases, including Drupal.',
     long_description=read('README'),
-    author='Daniel Malament',
-    author_email='daniel.j.malament@gmail.com',
+    author='Danielle Malament',
+    author_email='danielle.malament@gmail.com',
     url='http://www.obsessivecompulsivesoftware.com/',
     #download_url='',
     classifiers=[
